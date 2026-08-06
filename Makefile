@@ -1,0 +1,153 @@
+SHELL := /bin/bash
+
+PROJECT_NAME := $(shell if [ -f PROJECT ]; then sed -n '/^[[:space:]]*[^#\[[:space:]]/p' PROJECT | head -1 | tr -d '[:space:]'; else sed -n 's/^[[:space:]]*name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' Cargo.toml | head -1; fi)
+PROJECT_VERSION := $(shell if [ -f PROJECT ]; then sed -n '/^[[:space:]]*[^#\[[:space:]]/p' PROJECT | sed -n '2p' | tr -d '[:space:]'; else sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' Cargo.toml | head -1; fi)
+ifeq ($(PROJECT_NAME),)
+    $(error Error: PROJECT file not found or invalid)
+endif
+
+TOP_DIR := $(CURDIR)
+CARGO := cargo
+EXAMPLE ?= main
+PREFIX ?= $(HOME)/.local
+HISTORY ?=
+OUTPUT ?= target/research
+MAX_EMBEDDED_BYTES ?= 475000
+
+HAS_REL := $(shell command -v git-rel 2>/dev/null)
+
+$(info ------------------------------------------)
+$(info Project: $(PROJECT_NAME) v$(PROJECT_VERSION))
+$(info ------------------------------------------)
+
+.PHONY: build b compile c run r evaluate research-export bench-million bench-tiny size size-full size-check test test-minimal t check check-minimal check-all test-all clippy rustdoc fmt fmt-check clean verify release help h
+
+build:
+	@$(CARGO) build --lib
+
+b: build
+
+compile:
+	@$(CARGO) clean
+	@$(MAKE) build
+
+c: compile
+
+run:
+	@$(CARGO) run --example $(EXAMPLE)
+
+r: run
+
+evaluate:
+	@$(CARGO) run --release --features evaluation --example evaluate $(if $(HISTORY),-- $(HISTORY),$(if $(filter-out main,$(EXAMPLE)),-- $(EXAMPLE),))
+
+research-export:
+	@if [ -z "$(HISTORY)" ]; then echo "HISTORY=/path is required"; exit 1; fi
+	@$(CARGO) run --release --features research --example export -- "$(HISTORY)" "$(OUTPUT)"
+
+bench-million:
+	@$(CARGO) run --release --features snapshot --example million
+
+bench-tiny:
+	@$(CARGO) run --release --no-default-features --example tiny
+
+size:
+	@$(CARGO) build --release --no-default-features --example empty --example embedded
+	@stat -c 'empty_rust_bytes=%s' target/release/examples/empty
+	@stat -c 'embedded_example_bytes=%s' target/release/examples/embedded
+	@empty=$$(stat -c %s target/release/examples/empty); embedded=$$(stat -c %s target/release/examples/embedded); echo "vista_incremental_bytes=$$((embedded - empty))"
+	@size target/release/examples/embedded
+
+size-full:
+	@$(CARGO) build --release --all-features --example embedded
+	@stat -c 'full_embedded_example_bytes=%s' target/release/examples/embedded
+	@size target/release/examples/embedded
+
+size-check: size
+	@bytes=$$(stat -c %s target/release/examples/embedded); if [ "$$bytes" -gt "$(MAX_EMBEDDED_BYTES)" ]; then echo "embedded example $$bytes exceeds $(MAX_EMBEDDED_BYTES) bytes"; exit 1; fi
+
+test:
+	@$(CARGO) test --all-targets --all-features
+
+test-minimal:
+	@$(CARGO) test --no-default-features --lib --test minimal
+	@$(CARGO) test --no-default-features --features snapshot --lib --test minimal
+
+t: test
+
+check:
+	@$(CARGO) check --lib --bins --examples
+
+check-minimal:
+	@$(CARGO) check --lib --no-default-features
+	@$(CARGO) check --lib --no-default-features --features recent-cache
+	@$(CARGO) check --lib --no-default-features --features snapshot
+	@$(CARGO) check --lib --no-default-features --features surface-indexes
+
+check-all:
+	@$(CARGO) check --all-targets --all-features
+
+fmt:
+	@$(CARGO) fmt --all
+
+fmt-check:
+	@$(CARGO) fmt --all -- --check
+
+clippy:
+	@$(CARGO) clippy --lib --no-default-features -- -D warnings
+	@$(CARGO) clippy --lib --no-default-features --features snapshot -- -D warnings
+	@$(CARGO) clippy --all-targets --all-features -- -D warnings
+
+rustdoc:
+	@RUSTDOCFLAGS="-Dwarnings" $(CARGO) doc --all-features --no-deps
+
+test-all:
+	@$(CARGO) test --all-targets --all-features
+
+clean:
+	@$(CARGO) clean
+
+verify: fmt-check check check-minimal test-minimal test check-all test-all clippy rustdoc size-check
+
+release:
+	@if [ -z "$(HAS_REL)" ]; then \
+		echo "git-rel is not installed. Please install it first."; \
+		exit 1; \
+	fi
+	@if [ -z "$(TYPE)" ]; then \
+		echo "Release type not specified. Use 'make release TYPE=[patch|minor|major|M.m.p]'"; \
+		exit 1; \
+	fi
+	@git rel $(TYPE)
+
+help:
+	@echo
+	@echo "Usage: make [target]"
+	@echo
+	@echo "Available targets:"
+	@echo "  build        Build the library"
+	@echo "  compile      Clean and rebuild"
+	@echo "  run          Run a development example"
+	@echo "  evaluate     Evaluate synthetic or HISTORY=/path input"
+	@echo "  research-export  Export HISTORY=/path to OUTPUT=target/research"
+	@echo "  bench-million  Ingest and restore one million events"
+	@echo "  bench-tiny   Saturate and report the tiny sequence-only model"
+	@echo "  size         Measure the minimal release embedding example"
+	@echo "  size-full    Measure the all-feature embedding example"
+	@echo "  size-check   Enforce MAX_EMBEDDED_BYTES for the minimal example"
+	@echo "  test         Run all tests"
+	@echo "  test-minimal Run sequence-only and snapshot-only tests"
+	@echo "  check        Check default-feature library and examples"
+	@echo "  check-minimal  Check minimal feature combinations"
+	@echo "  check-all    Run cargo check on all targets/all features"
+	@echo "  test-all     Run cargo test on all targets/all features"
+	@echo "  clippy       Run clippy with warnings denied"
+	@echo "  rustdoc      Build docs with warnings denied"
+	@echo "  fmt          Format the workspace"
+	@echo "  fmt-check    Check formatting"
+	@echo "  clean        Remove Cargo build artifacts"
+	@echo "  verify       Run the full local gate"
+	@echo "  release      Release a new version"
+	@echo
+
+h: help
