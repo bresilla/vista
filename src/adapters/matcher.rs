@@ -1,5 +1,6 @@
 #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use crate::api::Item;
 #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
@@ -7,8 +8,26 @@ use crate::api::SurfaceId;
 #[cfg(feature = "surface-indexes")]
 use crate::engine::prune_counts;
 
+/// One partial-input comparison, in both concrete and template form.
+///
+/// `partial_template` is present only when the caller supplied a source item to
+/// normalize, so a matcher can compare shapes instead of concrete arguments.
+pub struct MatchInput<'a> {
+    pub partial: &'a str,
+    pub partial_template: Option<&'a Item>,
+    pub candidate: &'a Item,
+    pub candidate_template: &'a Item,
+}
+
 pub trait CandidateMatcher: Send + Sync {
     fn score(&self, partial: &str, candidate: &Item) -> Option<f64>;
+
+    /// Scores a candidate with template context available.
+    ///
+    /// The default ignores the templates and defers to [`CandidateMatcher::score`].
+    fn score_match(&self, input: MatchInput<'_>) -> Option<f64> {
+        self.score(input.partial, input.candidate)
+    }
 
     fn snapshot_key(&self) -> &str {
         std::any::type_name::<Self>()
@@ -46,6 +65,75 @@ impl CandidateMatcher for ContainsMatcher {
     fn snapshot_key(&self) -> &str {
         "vista::matcher::ContainsMatcher"
     }
+}
+
+/// Character-trigram overlap, comparing templates when they are available.
+///
+/// Concrete arguments dominate edit distance between otherwise identical
+/// commands, so a template comparison keeps `apt install {pkg}` close to
+/// `sudo apt install {pkg}` regardless of the argument each one carried.
+#[derive(Clone, Copy, Debug)]
+pub struct SimilarityMatcher {
+    threshold: f64,
+}
+
+impl SimilarityMatcher {
+    pub fn new(threshold: f64) -> Self {
+        Self {
+            threshold: if threshold.is_finite() {
+                threshold.clamp(0.0, 1.0)
+            } else {
+                0.5
+            },
+        }
+    }
+
+    fn similarity(&self, left: &str, right: &str) -> Option<f64> {
+        let left = trigrams(left);
+        let right = trigrams(right);
+        if left.is_empty() || right.is_empty() {
+            return None;
+        }
+        let shared = left.intersection(&right).count() as f64;
+        let union = left.union(&right).count() as f64;
+        let score = shared / union;
+        (score >= self.threshold).then_some(score)
+    }
+}
+
+impl Default for SimilarityMatcher {
+    fn default() -> Self {
+        Self::new(0.5)
+    }
+}
+
+impl CandidateMatcher for SimilarityMatcher {
+    fn score(&self, partial: &str, candidate: &Item) -> Option<f64> {
+        self.similarity(partial, &candidate.value)
+    }
+
+    fn score_match(&self, input: MatchInput<'_>) -> Option<f64> {
+        match input.partial_template {
+            Some(template) => self.similarity(&template.value, &input.candidate_template.value),
+            None => self.similarity(input.partial, &input.candidate.value),
+        }
+    }
+
+    fn snapshot_key(&self) -> &str {
+        "vista::matcher::SimilarityMatcher"
+    }
+}
+
+fn trigrams(value: &str) -> BTreeSet<String> {
+    let chars: Vec<_> = value.trim().to_lowercase().chars().collect();
+    let width = chars.len().min(3);
+    if width == 0 {
+        return BTreeSet::new();
+    }
+    chars
+        .windows(width)
+        .map(|window| window.iter().collect())
+        .collect()
 }
 
 #[derive(Clone, Default)]

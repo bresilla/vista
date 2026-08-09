@@ -22,8 +22,8 @@ mod research;
 mod snapshot;
 
 pub use adapters::{
-    CandidateMatcher, ContainsMatcher, IdentityNormalizer, ItemMatcher, NormalizedItem, Normalizer,
-    Tokenizer, WhitespaceTokenizer,
+    CandidateMatcher, ContainsMatcher, IdentityNormalizer, ItemMatcher, MatchInput, NormalizedItem,
+    Normalizer, SimilarityMatcher, Tokenizer, WhitespaceTokenizer,
 };
 pub use api::{Config, Feature, InputError, Item, Observation, Position, Query, StreamId, Weights};
 pub use engine::{Explanation, ModelStats, Prediction, Predictor, PredictorBuilder, Trainer};

@@ -2,7 +2,50 @@ use super::*;
 
 impl Predictor {
     pub fn predict(&self, query: &Query) -> Vec<Prediction> {
-        if query.limit == 0 || self.dictionary.templates.is_empty() {
+        self.ranked(query, None, query.limit)
+    }
+
+    /// Ranks predicted templates and refills them with `source`'s own slots.
+    ///
+    /// Matching compares template shapes rather than concrete arguments, and
+    /// each template is returned once, carrying the arguments of `source`
+    /// instead of those of the historical surface that was retained. Templates
+    /// the normalizer cannot render are dropped. When `query.partial` is unset
+    /// the source value is used, so partial retrieval still applies.
+    pub fn predict_rendered(&self, query: &Query, source: &Item) -> Vec<Prediction> {
+        if query.limit == 0 {
+            return Vec::new();
+        }
+        let normalized = self.normalizer.normalize(source);
+        let mut effective = query.clone();
+        if effective.partial.is_none() {
+            effective.partial = Some(source.value.clone());
+        }
+        let mut seen = BTreeSet::new();
+        self.ranked(
+            &effective,
+            Some(&normalized.template),
+            self.config.max_candidates,
+        )
+        .into_iter()
+        .filter(|prediction| seen.insert(prediction.template.clone()))
+        .filter_map(|mut prediction| {
+            prediction.item = self
+                .normalizer
+                .render(&prediction.template, &normalized.slots)?;
+            Some(prediction)
+        })
+        .take(query.limit)
+        .collect()
+    }
+
+    fn ranked(
+        &self,
+        query: &Query,
+        partial_template: Option<&Item>,
+        limit: usize,
+    ) -> Vec<Prediction> {
+        if limit == 0 || self.dictionary.templates.is_empty() {
             return Vec::new();
         }
         let history = self
@@ -56,7 +99,12 @@ impl Predictor {
                 continue;
             };
             let partial = match query.partial.as_deref() {
-                Some(value) => match self.matcher.score(value, &surface.item) {
+                Some(value) => match self.matcher.score_match(MatchInput {
+                    partial: value,
+                    partial_template,
+                    candidate: &surface.item,
+                    candidate_template: &template.item,
+                }) {
                     Some(score) if score.is_finite() => score,
                     _ => continue,
                 },
@@ -123,7 +171,7 @@ impl Predictor {
             ));
         }
         predictions.sort_by(Prediction::cmp_rank);
-        predictions.truncate(query.limit.min(self.config.max_candidates));
+        predictions.truncate(limit.min(self.config.max_candidates));
         predictions
     }
 

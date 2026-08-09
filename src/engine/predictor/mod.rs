@@ -9,7 +9,7 @@ mod predict;
 
 pub use builder::PredictorBuilder;
 
-use crate::adapters::{CandidateMatcher, ItemMatcher, Normalizer, Tokenizer};
+use crate::adapters::{CandidateMatcher, ItemMatcher, MatchInput, Normalizer, Tokenizer};
 #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
 use crate::adapters::{PartialIndex, TokenIndex};
 use crate::api::{Config, Item, Observation, Query, StreamId, StreamTable, SurfaceId, TemplateId};

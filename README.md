@@ -185,6 +185,46 @@ know which paths, hosts, branches, identifiers, and secrets are safe to retain
 or replace. Vista retains at most 1,024 normalized slots per surface so a
 normalizer cannot create an unbounded snapshot section.
 
+## Rendered completions
+
+`predict` returns surfaces exactly as they were observed, so a predicted shape
+arrives carrying whichever arguments history retained. `predict_rendered` ranks
+templates instead, returns each one once, and refills it from the slots of the
+item being completed:
+
+```rust
+# use vista::{Config, Item, Predictor, Position, Query, SimilarityMatcher, StreamId};
+# let predictor = Predictor::builder(Config::default())
+#     .matcher(SimilarityMatcher::default())
+#     .build();
+let failed = Item::new("command", "apt install ripgrep");
+let query = Query::new(StreamId(7), Position(4), 3);
+for prediction in predictor.predict_rendered(&query, &failed) {
+    // template `sudo apt install {pkg}` renders as `sudo apt install ripgrep`,
+    // not as the historical surface `sudo apt install fd`
+    println!("{}", prediction.item.value);
+}
+```
+
+Implement `Normalizer::render` to enable this. The default accepts a template
+only when the source produced no slots, so a normalizer without an inverse
+never emits a half-filled template. Rendering that leaves a slot unfilled should
+return `None`, which drops that template from the results.
+
+Matching also changes. `CandidateMatcher::score_match` receives both the source
+template and the candidate template through `MatchInput`, because concrete
+arguments dominate similarity between otherwise identical commands:
+
+```text
+"apt install ripgrep" vs "sudo apt install fd"      → rejected
+"apt install {pkg}"   vs "sudo apt install {pkg}"   → accepted
+```
+
+The default `score_match` ignores templates and defers to `score`, so existing
+matchers are unaffected. `SimilarityMatcher` compares character trigrams,
+preferring templates when they are available, and returns `None` below its
+threshold so that no plausible completion means no suggestion.
+
 ## Million-line histories
 
 Use `Trainer` to ingest observations one at a time. It never retains the source
