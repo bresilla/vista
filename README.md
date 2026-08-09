@@ -204,19 +204,27 @@ for prediction in predictor.predict_aligned(&query, &failed) {
 }
 ```
 
-Tokens shared by both sides are structure, tokens only the candidate carries are
-the repair, and differing tokens are resolved by how much they resemble each
-other: near-identical tokens are one word misspelled, unrelated tokens are your
-arguments. `git chekout feature` against `git checkout main` yields
-`git checkout feature` — the misspelling corrected, the argument kept.
+Tokens shared by both sides are structure and tokens only the candidate carries
+are the repair. Tokens that differ are decided by history: a token history has
+produced before is one you meant, and only an unrecognised token is judged on
+how closely it resembles the observed one. `git chekout feature` against
+`git checkout main` yields `git checkout feature` — `chekout` is in no history
+and is one edit from `checkout`, while `feature` resembles nothing and survives
+as an argument. Had you ever run something containing `chekout`, it would be
+left alone.
 
-Nothing is configured or authored. There is no normalizer, no template, no rule,
-and no threshold to tune; the split between structure and argument comes out of
-the alignment. Candidates that share no structure repair to the source unchanged
-and are dropped, so alignment is also its own filter and the candidate matcher is
-not applied on this path. `Prediction::template` still identifies which history
-matched, and `Prediction::probability` still orders repairs by what usually
-follows in this stream.
+Nothing describes the syntax of the items being repaired. There is no
+normalizer, no template, and no rule about flags, subcommands, or argument
+positions, so the same path serves any command form. Items are split on
+whitespace and the vocabulary comes from what has been observed; the split
+between structure and argument comes out of the alignment itself.
+
+Candidates that share no structure repair to the source unchanged and are
+dropped, so alignment is its own filter and the candidate matcher is not applied
+on this path. `Prediction::template` still identifies which history matched, and
+`Prediction::probability` still orders repairs by what usually follows in this
+stream. Without `surface-indexes` there is no observed vocabulary, so every
+differing token falls back to the resemblance test.
 
 ## Rendered completions
 

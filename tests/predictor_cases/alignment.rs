@@ -99,6 +99,25 @@ fn repairs_are_distinct_and_never_echo_the_source() {
 }
 
 #[test]
+fn history_decides_what_counts_as_a_misspelling() {
+    let unseen = history_predictor(&["git checkout main", "git checkout main"]);
+    let typo = Item::new("command", "git checkout maim");
+    assert_eq!(
+        unseen.predict_aligned(&query(1, 3, 3), &typo)[0].item.value,
+        "git checkout main",
+        "an unrecognised token close to an observed one is a misspelling"
+    );
+
+    let seen = history_predictor(&["git checkout main", "git checkout maim"]);
+    assert!(
+        seen.predict_aligned(&query(1, 3, 3), &typo)
+            .iter()
+            .all(|prediction| prediction.item.value != "git checkout main"),
+        "a token history has produced is never rewritten"
+    );
+}
+
+#[test]
 fn an_empty_history_suggests_nothing() {
     let predictor = Predictor::new(Config::default());
     let failed = Item::new("command", "apt install ripgrep");

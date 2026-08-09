@@ -64,6 +64,11 @@ impl Predictor {
         if effective.partial.is_none() {
             effective.partial = Some(source.value.clone());
         }
+        // History decides which tokens are real; nothing describes the syntax.
+        #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
+        let known = |token: &str| self.tokens.known(token);
+        #[cfg(not(any(feature = "snapshot", feature = "surface-indexes")))]
+        let known = |_: &str| false;
         let mut seen = BTreeSet::new();
         self.ranked(
             &effective,
@@ -72,7 +77,7 @@ impl Predictor {
         )
         .into_iter()
         .filter_map(|mut prediction| {
-            let repaired = repair(&source.value, &prediction.item.value)?;
+            let repaired = repair(&source.value, &prediction.item.value, &known)?;
             if repaired == source.value || !seen.insert(repaired.clone()) {
                 return None;
             }

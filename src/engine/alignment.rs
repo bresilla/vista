@@ -4,12 +4,17 @@ const TYPO_SIMILARITY: f64 = 0.5;
 
 /// Rebuilds `candidate`'s structure around `source`'s own arguments.
 ///
-/// Tokens shared by both are structure, tokens only the candidate has are the
-/// repair, and tokens that differ are resolved by how much they resemble each
-/// other: near-identical tokens are one word misspelled, unrelated tokens are
-/// caller arguments that must survive. Nothing here is configured or authored;
-/// the split falls out of the two strings.
-pub(crate) fn repair(source: &str, candidate: &str) -> Option<String> {
+/// Tokens shared by both are structure and tokens only the candidate has are
+/// the repair. Tokens that differ are decided by `known`, which reports whether
+/// history has ever produced that token: a token history recognises is one the
+/// caller meant, and only an unrecognised token is judged on how closely it
+/// resembles the observed one. The split between structure and argument comes
+/// out of the alignment, not from any description of the input's syntax.
+pub(crate) fn repair(
+    source: &str,
+    candidate: &str,
+    known: &dyn Fn(&str) -> bool,
+) -> Option<String> {
     let source: Vec<&str> = source.split_whitespace().collect();
     let candidate: Vec<&str> = candidate.split_whitespace().collect();
     if source.is_empty() || candidate.is_empty() {
@@ -29,6 +34,7 @@ pub(crate) fn repair(source: &str, candidate: &str) -> Option<String> {
         resolve(
             &source[consumed_source..at_source],
             &candidate[consumed_candidate..at_candidate],
+            known,
             &mut repaired,
         );
         if at_source < source.len() {
@@ -40,7 +46,12 @@ pub(crate) fn repair(source: &str, candidate: &str) -> Option<String> {
     Some(repaired.join(" "))
 }
 
-fn resolve<'a>(source: &[&'a str], candidate: &[&'a str], repaired: &mut Vec<&'a str>) {
+fn resolve<'a>(
+    source: &[&'a str],
+    candidate: &[&'a str],
+    known: &dyn Fn(&str) -> bool,
+    repaired: &mut Vec<&'a str>,
+) {
     if source.is_empty() {
         repaired.extend_from_slice(candidate);
         return;
@@ -50,11 +61,8 @@ fn resolve<'a>(source: &[&'a str], candidate: &[&'a str], repaired: &mut Vec<&'a
         return;
     }
     for (typed, observed) in source.iter().zip(candidate) {
-        repaired.push(if similarity(typed, observed) >= TYPO_SIMILARITY {
-            observed
-        } else {
-            typed
-        });
+        let misspelled = !known(typed) && similarity(typed, observed) >= TYPO_SIMILARITY;
+        repaired.push(if misspelled { observed } else { typed });
     }
 }
 
@@ -112,28 +120,53 @@ fn similarity(left: &str, right: &str) -> f64 {
 mod tests {
     use super::*;
 
+    fn nothing_known(_: &str) -> bool {
+        false
+    }
+
+    fn vocabulary(tokens: &'static [&'static str]) -> impl Fn(&str) -> bool {
+        move |token| tokens.contains(&token)
+    }
+
     #[test]
     fn inserted_tokens_are_kept_and_arguments_survive() {
-        let repaired = repair("apt install ripgrep", "sudo apt install fd");
+        let repaired = repair("apt install ripgrep", "sudo apt install fd", &nothing_known);
         assert_eq!(repaired.as_deref(), Some("sudo apt install ripgrep"));
     }
 
     #[test]
     fn a_misspelling_is_corrected_while_a_new_argument_is_preserved() {
-        let repaired = repair("git chekout feature", "git checkout main");
+        let repaired = repair("git chekout feature", "git checkout main", &nothing_known);
         assert_eq!(repaired.as_deref(), Some("git checkout feature"));
     }
 
     #[test]
     fn unrelated_candidates_leave_the_source_untouched() {
-        let repaired = repair("apt install ripgrep", "cargo build --release");
+        let repaired = repair(
+            "apt install ripgrep",
+            "cargo build --release",
+            &nothing_known,
+        );
         assert_eq!(repaired.as_deref(), Some("apt install ripgrep"));
+    }
+
+    #[test]
+    fn a_token_history_recognises_is_never_treated_as_a_misspelling() {
+        let seen = vocabulary(&["git", "checkout", "main", "maim"]);
+        assert_eq!(
+            repair("git checkout maim", "git checkout main", &seen).as_deref(),
+            Some("git checkout maim"),
+        );
+        assert_eq!(
+            repair("git checkout maim", "git checkout main", &nothing_known).as_deref(),
+            Some("git checkout main"),
+        );
     }
 
     #[test]
     fn oversized_and_empty_inputs_are_rejected() {
         let long = "x ".repeat(MAX_TOKENS + 1);
-        assert_eq!(repair(&long, "ls"), None);
-        assert_eq!(repair("ls", "   "), None);
+        assert_eq!(repair(&long, "ls", &nothing_known), None);
+        assert_eq!(repair("ls", "   ", &nothing_known), None);
     }
 }

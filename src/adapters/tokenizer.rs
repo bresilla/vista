@@ -131,6 +131,11 @@ impl TokenIndex {
         candidates
     }
 
+    /// Whether history has ever produced this token.
+    pub(crate) fn known(&self, token: &str) -> bool {
+        self.items.contains_key(&token.to_lowercase())
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.items.len()
     }
