@@ -86,6 +86,13 @@ impl Predictor {
         write_nested_counts(&mut output, &self.partials.items, |output, id| {
             output.u32(id.0)
         })?;
+        let corrections = self.corrections.ordered();
+        output.len(corrections.len())?;
+        for (pair, count) in corrections {
+            write_item(&mut output, &pair.typed)?;
+            write_item(&mut output, &pair.corrected)?;
+            output.u64(count)?;
+        }
         let _ = output.finish()?;
         Ok(())
     }

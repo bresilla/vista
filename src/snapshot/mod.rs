@@ -15,13 +15,16 @@ use crate::adapters::{
 };
 use crate::api::{Config, StreamId, StreamState, StreamTable, SurfaceId, TemplateId};
 use crate::engine::{ContextIndex, Predictor};
-use crate::model::{ContextState, Dictionary, FollowerState, Ppm, SurfaceRecord, TemplateRecord};
+use crate::model::{
+    ContextState, CorrectionLog, CorrectionPair, Dictionary, FollowerState, Ppm, SurfaceRecord,
+    TemplateRecord,
+};
 
 const MAGIC: &[u8; 8] = b"VISTA\0\r\n";
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 const FEATURE_FLAGS: u64 =
     (cfg!(feature = "surface-indexes") as u64) | ((cfg!(feature = "recent-cache") as u64) << 1);
-const CONFIG_WORDS: usize = 23;
+const CONFIG_WORDS: usize = 26;
 const FNV_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV_PRIME: u64 = 0x100000001b3;
 

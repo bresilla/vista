@@ -1,6 +1,42 @@
 const MAX_TOKENS: usize = 64;
 const MAX_TOKEN_CHARS: usize = 64;
-const TYPO_SIMILARITY: f64 = 0.5;
+const UNKNOWN_TOKEN_LOGP: f64 = -8.0;
+const RESEMBLANCE_EXPONENT: f64 = 11.54;
+
+/// The channel: how likely each side of an aligned token pair was intended.
+///
+/// `retyped` is the observed rate at which the typed token was replaced by the
+/// candidate one; `known` reports whether history ever produced a token.
+pub(crate) struct Channel<'a> {
+    pub(crate) known: &'a dyn Fn(&str) -> bool,
+    pub(crate) retyped: &'a dyn Fn(&str, &str) -> Option<f64>,
+    pub(crate) weight: f64,
+}
+
+impl Channel<'_> {
+    /// Whether `observed` is likelier to have been intended than `typed`.
+    ///
+    /// A token history recognises is certain; an unrecognised one carries
+    /// `UNKNOWN_TOKEN_LOGP`. Resemblance is the backoff used only where no
+    /// retyping was ever observed, scaled so that half-shared characters sit at
+    /// exactly that floor.
+    fn prefers(&self, typed: &str, observed: &str) -> bool {
+        let intended = if (self.known)(typed) {
+            0.0
+        } else {
+            UNKNOWN_TOKEN_LOGP
+        };
+        let corrected = match (self.retyped)(typed, observed) {
+            Some(rate) => log_probability(rate),
+            None => RESEMBLANCE_EXPONENT * log_probability(similarity(typed, observed)),
+        };
+        corrected * self.weight > intended
+    }
+}
+
+fn log_probability(value: f64) -> f64 {
+    value.clamp(f64::MIN_POSITIVE, 1.0).ln()
+}
 
 /// Rebuilds `candidate`'s structure around `source`'s own arguments.
 ///
@@ -10,11 +46,7 @@ const TYPO_SIMILARITY: f64 = 0.5;
 /// caller meant, and only an unrecognised token is judged on how closely it
 /// resembles the observed one. The split between structure and argument comes
 /// out of the alignment, not from any description of the input's syntax.
-pub(crate) fn repair(
-    source: &str,
-    candidate: &str,
-    known: &dyn Fn(&str) -> bool,
-) -> Option<String> {
+pub(crate) fn repair(source: &str, candidate: &str, channel: &Channel<'_>) -> Option<String> {
     let source: Vec<&str> = source.split_whitespace().collect();
     let candidate: Vec<&str> = candidate.split_whitespace().collect();
     if source.is_empty() || candidate.is_empty() {
@@ -34,7 +66,7 @@ pub(crate) fn repair(
         resolve(
             &source[consumed_source..at_source],
             &candidate[consumed_candidate..at_candidate],
-            known,
+            channel,
             &mut repaired,
         );
         if at_source < source.len() {
@@ -49,7 +81,7 @@ pub(crate) fn repair(
 fn resolve<'a>(
     source: &[&'a str],
     candidate: &[&'a str],
-    known: &dyn Fn(&str) -> bool,
+    channel: &Channel<'_>,
     repaired: &mut Vec<&'a str>,
 ) {
     if source.is_empty() {
@@ -60,9 +92,12 @@ fn resolve<'a>(
         repaired.extend_from_slice(source);
         return;
     }
+    // Adjacent tokens never both change in one pass; iteration reaches the rest.
+    let mut previous_rewritten = false;
     for (typed, observed) in source.iter().zip(candidate) {
-        let misspelled = !known(typed) && similarity(typed, observed) >= TYPO_SIMILARITY;
-        repaired.push(if misspelled { observed } else { typed });
+        let rewrite = !previous_rewritten && channel.prefers(typed, observed);
+        repaired.push(if rewrite { observed } else { typed });
+        previous_rewritten = rewrite;
     }
 }
 
@@ -124,49 +159,88 @@ mod tests {
         false
     }
 
-    fn vocabulary(tokens: &'static [&'static str]) -> impl Fn(&str) -> bool {
-        move |token| tokens.contains(&token)
+    fn never_retyped(_: &str, _: &str) -> Option<f64> {
+        None
+    }
+
+    fn blank() -> Channel<'static> {
+        Channel {
+            known: &nothing_known,
+            retyped: &never_retyped,
+            weight: 1.0,
+        }
     }
 
     #[test]
     fn inserted_tokens_are_kept_and_arguments_survive() {
-        let repaired = repair("apt install ripgrep", "sudo apt install fd", &nothing_known);
+        let repaired = repair("apt install ripgrep", "sudo apt install fd", &blank());
         assert_eq!(repaired.as_deref(), Some("sudo apt install ripgrep"));
     }
 
     #[test]
     fn a_misspelling_is_corrected_while_a_new_argument_is_preserved() {
-        let repaired = repair("git chekout feature", "git checkout main", &nothing_known);
+        let repaired = repair("git chekout feature", "git checkout main", &blank());
         assert_eq!(repaired.as_deref(), Some("git checkout feature"));
     }
 
     #[test]
     fn unrelated_candidates_leave_the_source_untouched() {
-        let repaired = repair(
-            "apt install ripgrep",
-            "cargo build --release",
-            &nothing_known,
-        );
+        let repaired = repair("apt install ripgrep", "cargo build --release", &blank());
         assert_eq!(repaired.as_deref(), Some("apt install ripgrep"));
     }
 
     #[test]
     fn a_token_history_recognises_is_never_treated_as_a_misspelling() {
-        let seen = vocabulary(&["git", "checkout", "main", "maim"]);
+        let seen = |token: &str| ["git", "checkout", "main", "maim"].contains(&token);
+        let recognised = Channel {
+            known: &seen,
+            ..blank()
+        };
         assert_eq!(
-            repair("git checkout maim", "git checkout main", &seen).as_deref(),
+            repair("git checkout maim", "git checkout main", &recognised).as_deref(),
             Some("git checkout maim"),
         );
         assert_eq!(
-            repair("git checkout maim", "git checkout main", &nothing_known).as_deref(),
+            repair("git checkout maim", "git checkout main", &blank()).as_deref(),
             Some("git checkout main"),
         );
     }
 
     #[test]
+    fn an_observed_retyping_overrides_resemblance() {
+        // `-r` resembles `-f` closely, yet history never retyped it that way.
+        let never = |_: &str, _: &str| Some(0.0);
+        let refuted = Channel {
+            retyped: &never,
+            ..blank()
+        };
+        assert_eq!(
+            repair("rm -r target", "rm -f target", &refuted).as_deref(),
+            Some("rm -r target"),
+        );
+
+        // A pair history has actually retyped is repaired despite low overlap.
+        let observed = |_: &str, _: &str| Some(1.0);
+        let attested = Channel {
+            retyped: &observed,
+            ..blank()
+        };
+        assert_eq!(
+            repair("k get pods", "kubectl get pods", &attested).as_deref(),
+            Some("kubectl get pods"),
+        );
+    }
+
+    #[test]
+    fn adjacent_tokens_never_both_change_in_one_pass() {
+        let repaired = repair("gitt statuss", "git status", &blank());
+        assert_eq!(repaired.as_deref(), Some("git statuss"));
+    }
+
+    #[test]
     fn oversized_and_empty_inputs_are_rejected() {
         let long = "x ".repeat(MAX_TOKENS + 1);
-        assert_eq!(repair(&long, "ls", &nothing_known), None);
-        assert_eq!(repair("ls", "   ", &nothing_known), None);
+        assert_eq!(repair(&long, "ls", &blank()), None);
+        assert_eq!(repair("ls", "   ", &blank()), None);
     }
 }

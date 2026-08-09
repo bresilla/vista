@@ -14,6 +14,8 @@ pub struct Prediction {
     pub probability: f64,
     pub score: f64,
     pub context_depth: usize,
+    /// Repair passes that produced `item`; zero outside `predict_aligned`.
+    pub repair_iterations: usize,
     #[cfg(feature = "explanations")]
     pub explanation: Explanation,
 }
@@ -106,6 +108,7 @@ pub(crate) fn rank(input: RankInput, weights: &crate::Weights) -> Prediction {
         probability: input.probability,
         score,
         context_depth: input.deepest,
+        repair_iterations: 0,
         #[cfg(feature = "explanations")]
         explanation,
     }

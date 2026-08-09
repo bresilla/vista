@@ -60,15 +60,40 @@ impl Predictor {
         if query.limit == 0 {
             return Vec::new();
         }
-        let mut effective = query.clone();
-        if effective.partial.is_none() {
-            effective.partial = Some(source.value.clone());
+        let mut current = source.clone();
+        let mut visited = BTreeSet::from([source.value.clone()]);
+        let mut repairs = Vec::new();
+        for iteration in 1..=self.config.max_repair_iterations {
+            let round = self.repair_round(query, &current, iteration);
+            let Some(best) = round.first().map(|p| p.item.value.clone()) else {
+                break;
+            };
+            repairs = round;
+            if !visited.insert(best.clone()) {
+                break;
+            }
+            current = Item::new(source.namespace.clone(), best);
         }
+        repairs.truncate(query.limit);
+        repairs
+    }
+
+    /// One repair pass over the candidates retrieved for `current`.
+    fn repair_round(&self, query: &Query, current: &Item, iteration: usize) -> Vec<Prediction> {
+        let mut effective = query.clone();
+        effective.partial = Some(current.value.clone());
         // History decides which tokens are real; nothing describes the syntax.
         #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
         let known = |token: &str| self.tokens.known(token);
         #[cfg(not(any(feature = "snapshot", feature = "surface-indexes")))]
         let known = |_: &str| false;
+        let retyped =
+            |typed: &str, corrected: &str| self.corrections.retyped_rate(typed, corrected);
+        let channel = Channel {
+            known: &known,
+            retyped: &retyped,
+            weight: self.config.channel_weight,
+        };
         let mut seen = BTreeSet::new();
         self.ranked(
             &effective,
@@ -77,14 +102,14 @@ impl Predictor {
         )
         .into_iter()
         .filter_map(|mut prediction| {
-            let repaired = repair(&source.value, &prediction.item.value, &known)?;
-            if repaired == source.value || !seen.insert(repaired.clone()) {
+            let repaired = repair(&current.value, &prediction.item.value, &channel)?;
+            if repaired == current.value || !seen.insert(repaired.clone()) {
                 return None;
             }
             prediction.item = Item::new(prediction.item.namespace.clone(), repaired);
+            prediction.repair_iterations = iteration;
             Some(prediction)
         })
-        .take(query.limit)
         .collect()
     }
 

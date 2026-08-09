@@ -2,7 +2,10 @@ use super::*;
 
 impl Predictor {
     pub(crate) fn retained_string_bytes(&self) -> usize {
-        let bytes = self.dictionary.string_bytes();
+        let bytes = self
+            .dictionary
+            .string_bytes()
+            .saturating_add(self.corrections.string_bytes());
         #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
         let bytes = bytes
             .saturating_add(self.context.string_bytes())
@@ -13,8 +16,17 @@ impl Predictor {
 
     pub fn break_stream(&mut self, stream: StreamId) {
         self.streams.break_stream(stream);
+        self.corrections.break_stream(stream);
         #[cfg(feature = "recent-cache")]
         self.cache.break_stream(stream);
+    }
+
+    /// Retypings mined from history, with how often each was observed.
+    pub fn corrections(&self) -> Vec<(CorrectionPair, u64)> {
+        self.corrections
+            .pairs()
+            .map(|(pair, count)| (pair.clone(), count))
+            .collect()
     }
 
     pub fn forget(&mut self, matcher: &dyn ItemMatcher) {
@@ -66,6 +78,7 @@ impl Predictor {
         self.dictionary.clear();
         self.streams.clear();
         self.ppm.clear();
+        self.corrections.clear();
         #[cfg(feature = "recent-cache")]
         self.cache.clear();
         #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
@@ -125,6 +138,7 @@ impl Predictor {
             token_associations,
             partial_associations,
             observations: self.clock,
+            correction_pairs: self.corrections.len(),
             retained_string_bytes: self.retained_string_bytes(),
             estimated_heap_bytes: 0,
         };

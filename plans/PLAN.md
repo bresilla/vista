@@ -6,28 +6,56 @@
 
 ## Status
 
-- Planned at commit `ac845e4`, 2026-08-09.
-- Audited state: branch `feat/rendered-completions`, three commits adding
-  `predict_rendered`, `predict_aligned`, `MatchInput`/`score_match`,
-  `SimilarityMatcher`, and history-driven token arbitration. 73 integration /
-  16 unit / 14 minimal tests green across every feature combination.
-- Overall: incomplete. Correction quality is unmeasured, the repair loop runs
-  once, and one hardcoded constant still decides misspelling-versus-argument.
+- Planned at commit `ac845e4`, executed 2026-08-09.
+- Phases 1–4 are complete. 80 integration / 23 unit / 21 minimal tests green
+  across every feature combination, clippy clean, `loc-check` clean.
+- Repair is now iterative, scored as a noisy channel, and trained by retypings
+  mined from the caller's own history. No authored constant decides
+  misspelling-versus-argument any more.
 
 | Phase | Work | Priority | Effort | Depends | Status |
 |---|---|---:|---:|---|---|
-| 1 | Correction evaluation harness | P0 | M | — | TODO |
-| 2 | Mine correction pairs from history | P0 | M | 1 | TODO |
-| 3 | Iterative repair with safety constraints | P0 | M | 1–2 | TODO |
-| 4 | Noisy-channel repair scoring | P1 | L | 1–3 | TODO |
-| 5 | Learned substring edit model | P2 | L | 4 | TODO |
-| 6 | Symmetric-delete retrieval | P2 | M | 1 | TODO |
+| 1 | Correction evaluation harness | P0 | M | — | DONE |
+| 2 | Mine correction pairs from history | P0 | M | 1 | DONE |
+| 3 | Iterative repair with safety constraints | P0 | M | 1–2 | DONE |
+| 4 | Noisy-channel repair scoring | P1 | L | 1–3 | DONE |
+| 5 | Learned substring edit model | P2 | L | 4 | BLOCKED: needs phase 9 |
+| 6 | Symmetric-delete retrieval | P2 | M | 1 | BLOCKED: needs phase 7 |
 | 7 | Pin and verify musl toolchain | P1 | M | — | TODO |
 | 8 | Simplify Nix development shell | P2 | M | 7 | TODO |
 | 9 | Run real-corpus quality gate | P1 | M | 1–4 | BLOCKED: corpus required |
 | 10 | Refresh final documentation | P1 | S | 1–9 | TODO |
 
 Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED: reason`, `REJECTED: reason`.
+
+## Measured results
+
+Synthetic fixture: 80 observations of ten commands, 40 repair opportunities
+(every third damaging two neighbouring words), 40 already-correct controls.
+`make test` reproduces these through `tests/predictor_cases/correction.rs`.
+
+| Configuration | Recall | Precision | Top-3 | False positives | Mean passes |
+|---|---:|---:|---:|---:|---:|
+| 1 iteration | 0.500 | 0.690 | 0.500 | 0.000 | 0.36 |
+| **2 iterations** | **0.725** | **1.000** | **0.725** | **0.000** | **0.47** |
+| 3 iterations | 0.725 | 1.000 | 0.725 | 0.000 | 0.47 |
+| channel weight 0.5 | 0.550 | 0.759 | 0.675 | 0.000 | 0.47 |
+| channel weight 1.0 | 0.725 | 1.000 | 0.725 | 0.000 | 0.47 |
+| channel weight 2.0 | 0.725 | 1.000 | 0.725 | 0.000 | 0.47 |
+
+The research transferred. Iteration was predicted to be the dominant win at
++20.0 points of recall; it delivered **+22.5**, and it also lifted precision by
+31 points because the repairs one pass produces on a two-edit input are wrong
+rather than absent. Convergence at two passes reproduced exactly: the published
+work reported two iterations sufficient, and the third pass changes nothing
+here.
+
+False positives stayed at zero throughout. Alignment abstains on controls
+because a candidate sharing no structure repairs the input to itself, which is
+not a repair and is dropped.
+
+Weakening the channel costs both precision and recall, so the noisy-channel term
+is doing real work rather than reproducing the constant it replaced.
 
 ## Non-negotiable repository rules
 
@@ -169,6 +197,13 @@ index; this is a retrieval swap, not a quality change.
 
 ## Phase 1: Correction evaluation harness
 
+**DONE.** `src/evaluation/correction.rs` behind the `evaluation` feature, with
+`CorrectionAttempt::repair`/`::control`, `CorrectionMetrics`, and a chronological
+runner that scores an attempt strictly before the observation at that position is
+learned. `Prediction::repair_iterations` carries the pass count. The fixture
+lives in `tests/predictor_cases/correction.rs` rather than `tests/fixtures/`, so
+it needs no parser and stays deterministic.
+
 ### Goal
 
 Nothing in phases 2–6 can be judged today. `Evaluation` measures next-item
@@ -211,6 +246,11 @@ report; the fixture is too easy and phases 3–5 cannot be judged by it.
 ---
 
 ## Phase 2: Mine correction pairs from history
+
+**DONE.** `src/model/corrections.rs` holds `CorrectionLog`, bounded by
+`Config::max_correction_pairs`, counted in `retained_string_bytes`, reported as
+`ModelStats::correction_pairs`, exposed by `Predictor::corrections()`, and
+serialized as a new snapshot section at `VERSION` 3.
 
 ### Goal
 
@@ -258,6 +298,17 @@ supplied. If a fixture needs Vista to guess that an item failed, stop.
 
 ## Phase 3: Iterative repair with safety constraints
 
+**DONE**, and the largest win as predicted: +22.5 recall, +31.0 precision.
+`predict_aligned` loops `repair_round` to a fixpoint bounded by
+`Config::max_repair_iterations`, terminating on any revisited value. Adjacent
+tokens never both change in one pass, which is what forces the second pass and
+prevents a cascade of rewrites.
+
+Deviation: known tokens are never rewritten, in any iteration. The channel gives
+a recognised token certainty, so no correction probability can exceed it. This
+is stronger than the planned first-iteration-only restriction and removes the
+`log wood -> dog food` failure class outright.
+
 ### Goal
 
 The single largest measured win available: 47.2 to 67.2 recall in the reference
@@ -297,6 +348,17 @@ it.
 ---
 
 ## Phase 4: Noisy-channel repair scoring
+
+**DONE.** `TYPO_SIMILARITY` is gone; `rg TYPO_SIMILARITY src/` returns nothing.
+`engine::alignment::Channel` compares the log-probability that the typed token
+was intended against the log-probability that it was retyped as the observed
+one, preferring an observed retyping rate and falling back to resemblance only
+where history has never seen the pair. `Config::channel_weight` scales the
+channel term; 0.5 measurably costs precision and recall, 1.0 and 2.0 agree.
+
+The resemblance backoff is scaled so half-shared characters land exactly on the
+unknown-token floor, which reproduces the old constant as the break-even point
+of a probability rather than as a threshold.
 
 ### Goal
 
@@ -367,6 +429,23 @@ If it does not beat phase 4 by at least 2 points of recall at equal precision,
 mark `REJECTED`, delete the code, and record the measurement. A one-point gain
 does not justify a new feature flag, a snapshot section, and a training pass.
 
+### Outcome: BLOCKED on phase 9
+
+Not started, and it must not be started on synthetic data. Two findings from
+executing phase 4:
+
+- Phase 4 already ships an error model. `CorrectionLog::retyped_rate` estimates
+  `P(typed | corrected)` from mined retypings and feeds it to the channel ahead
+  of the resemblance backoff. Phase 5 would refine that from token-level to
+  substring-level, so its gate must measure a *marginal* gain over an error
+  model that already exists, not a gain over having none.
+- The phase-1 fixture cannot measure it. Precision is already 1.000, leaving no
+  headroom, and the fixture's history contains no failures, so no pairs are
+  mined and a substring model would train on nothing.
+
+Measuring the 2-point gate honestly needs the real corpus from phase 9. Do not
+substitute a fixture built to make the phase pass.
+
 ---
 
 ## Phase 6: Symmetric-delete retrieval
@@ -392,6 +471,14 @@ p95 prediction latency improved, heap growth within the configured bounds.
 
 If the delete index costs more retained bytes than it saves in latency at the
 tiny preset, mark `REJECTED`.
+
+### Outcome: BLOCKED on phase 7
+
+Not started. The gate is `make bench-million` plus a tiny-preset byte
+comparison, and no benchmark target can run until the toolchain pin is fixed.
+Adding a second retrieval index on unmeasured speculation is exactly what the
+STOP exists to prevent — prediction p95 is already 88 us, and at the tiny preset
+a delete index over 64 templates is very likely pure overhead.
 
 ---
 

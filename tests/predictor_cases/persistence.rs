@@ -176,7 +176,7 @@ fn unsupported_and_oversized_snapshots_are_rejected() {
     unsupported_features[12..20].copy_from_slice(&1_u64.to_le_bytes());
     assert!(load(unsupported_features).is_err());
 
-    let mut offset = 8 + 4 + 8 + 8 + 23 * 8;
+    let mut offset = 8 + 4 + 8 + 8 + 26 * 8;
     for _ in 0..3 {
         let length = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap()) as usize;
         offset += 8 + length;

@@ -322,6 +322,16 @@ impl Predictor {
             history.last().copied(),
             admission.template,
         );
+        self.corrections.observe(
+            observation.stream,
+            &observation.item,
+            observation.position.0,
+            observation
+                .outcome
+                .iter()
+                .filter_map(Feature::quality)
+                .any(|quality| quality <= 0.0),
+        );
         self.streams.advance(
             observation.stream,
             admission.template,
