@@ -3,51 +3,35 @@
 //! Vista learns variable-order template sequences, adapts through one integrated
 //! recent-history cache, and returns concrete surfaces observed previously. The
 //! caller owns collection, sanitisation, normalization policy, and storage paths.
+//!
+//! A [`StreamId`] separates sequence continuity, not privacy or tenancy. Direct
+//! transitions never cross streams, and gaps or [`Predictor::break_stream`]
+//! reset a stream's private continuity. Aggregate model and recent-cache
+//! evidence may still be shared across streams. Use separate predictors for
+//! separate privacy domains.
 
-#[cfg(any(feature = "recent-cache", feature = "snapshot"))]
-mod cache;
-mod candidates;
-mod config;
-#[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
-mod context;
-mod dictionary;
+mod adapters;
+mod api;
+mod engine;
 #[cfg(feature = "evaluation")]
 mod evaluation;
-mod explanation;
+mod model;
 #[cfg(feature = "research")]
-mod export;
-mod feature;
-mod item;
-mod matcher;
-mod normalizer;
-mod observation;
-mod ppm;
-mod predictor;
-#[cfg(feature = "surface-indexes")]
-mod pruning;
-mod ranking;
+mod research;
 #[cfg(feature = "snapshot")]
 mod snapshot;
-mod statistics;
-mod stream;
-mod tokenizer;
-mod trainer;
 
-pub use config::{Config, Weights};
+pub use adapters::{
+    CandidateMatcher, ContainsMatcher, IdentityNormalizer, ItemMatcher, NormalizedItem, Normalizer,
+    Tokenizer, WhitespaceTokenizer,
+};
+pub use api::{Config, Feature, InputError, Item, Observation, Position, Query, StreamId, Weights};
+pub use engine::{Explanation, ModelStats, Prediction, Predictor, PredictorBuilder, Trainer};
 #[cfg(feature = "evaluation")]
-pub use evaluation::{Baseline, Evaluation, EvaluationMetrics, EvaluationReport};
-pub use explanation::Explanation;
+pub use evaluation::{
+    Baseline, Evaluation, EvaluationMetrics, EvaluationReport, SnapshotMeasurement, SnapshotStage,
+};
 #[cfg(feature = "research")]
-pub use export::{ResearchExport, ResearchExportError};
-pub use feature::Feature;
-pub use item::Item;
-pub use matcher::{CandidateMatcher, ContainsMatcher, ItemMatcher};
-pub use normalizer::{IdentityNormalizer, NormalizedItem, Normalizer};
-pub use observation::{Observation, Query};
-pub use predictor::{ModelStats, Predictor, PredictorBuilder};
-pub use ranking::Prediction;
+pub use research::{ResearchExport, ResearchExportError};
 #[cfg(feature = "snapshot")]
 pub use snapshot::SnapshotError;
-pub use stream::{Position, StreamId};
-pub use tokenizer::{Tokenizer, WhitespaceTokenizer};
-pub use trainer::Trainer;

@@ -7,9 +7,12 @@ for every external model.
 - `write_spmf` emits the SPMF/IPredict format: `id -1 ... -2`.
 - `write_plain` emits one whitespace-separated sequence per line for PBCT or
   custom PPM tools.
-- `write_dictionary` emits `id`, namespace, and template as tab-separated text.
+- `write_dictionary` emits `id`, escaped namespace, and escaped template as
+  tab-separated text. Backslash, tab, carriage return, and newline use
+  `\\`, `\t`, `\r`, and `\n` escapes.
 - A position gap ends the current sequence. Streams are never joined.
-- IDs are assigned by first chronological appearance starting at zero.
+- IDs are positive integers assigned by first chronological appearance starting
+  at one. SPMF `-1` and `-2` remain itemset and sequence terminators.
 
 Create all three files from sanitized one-sentence-per-line history:
 

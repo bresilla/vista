@@ -2,6 +2,7 @@
 name = "vista"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.97.1"
 description = "Bounded online prediction of previously observed sentences and commands"
 license = "MIT"
 readme = "README.md"

@@ -13,11 +13,13 @@ fn observation(value: &str, position: u64) -> Observation {
 
 fn main() {
     let mut predictor = Predictor::new(Config::default());
-    predictor.replay([
-        observation("build the project", 1),
-        observation("run the tests", 2),
-        observation("build the project", 3),
-    ]);
+    predictor
+        .replay([
+            observation("build the project", 1),
+            observation("run the tests", 2),
+            observation("build the project", 3),
+        ])
+        .unwrap();
     let query = Query::new(StreamId(1), Position(4), 3);
     for prediction in predictor.predict(&query) {
         println!(

@@ -22,6 +22,11 @@ is the template dictionary, PPM counts, surface statistics, retrieval indexes,
 and recent cache stored together in a compiled snapshot. The values in
 `Config::weights` are fixed presentation coefficients, not learned parameters.
 
+Ingestion is fallible: `observe` and `replay` return `Result<(), InputError>`.
+Vista validates raw items, normalizer output, features, tokens, and derived
+index keys before changing the model. Rejected observations leave predictions,
+statistics, clocks, and snapshot bytes unchanged.
+
 The default crate build contains the live predictor, recent cache, explanations,
 snapshot persistence, and surface retrieval indexes. Disable default features
 for the smallest sequence-only core, then enable only what the host needs:
@@ -34,6 +39,27 @@ enters an embedded consumer unless requested.
 Long contexts back off automatically when evidence is sparse. A position gap or
 `break_stream` resets sequence continuity, so events on opposite sides of a
 hidden or removed observation are never joined.
+
+`StreamId` is a sequence-continuity boundary, not a tenant or privacy boundary.
+Direct transitions never cross streams, while aggregate PPM evidence and the
+global recent-cache fallback may inform predictions in another stream. Gaps and
+`break_stream` discard only the affected stream's private continuity. Hosts
+must use separate `Predictor` instances for separate users, tenants, or privacy
+domains.
+
+## Architecture
+
+Vista stays one Cargo library so its feature gates, private model state, and
+root API remain coordinated without cross-crate plumbing. The implementation is
+split into internal domains: `api` holds public data types, `adapters` holds
+normalization and matching interfaces, `model` owns retained state, `engine`
+runs learning and prediction, and the feature-gated `snapshot`, `evaluation`,
+and `research` domains provide optional tooling. These paths are implementation
+details; consumers should import the public types re-exported from `vista`.
+
+Every maintained repository file is limited to 600 physical lines. `make
+loc-check` enforces the limit for tracked and nonignored untracked files, and is
+part of `make verify`.
 
 ## Basic use
 
@@ -56,7 +82,7 @@ predictor.replay([
     event(1, "build the project"),
     event(2, "run the tests"),
     event(3, "build the project"),
-]);
+])?;
 
 let predictions = predictor.predict(&Query::new(StreamId(7), Position(4), 3));
 assert_eq!(predictions[0].item.value, "run the tests");
@@ -103,17 +129,23 @@ forgetting. It omits recent-cache adaptation, snapshots, explanation strings,
 and caller-context/token/fragment retrieval. Features can be added back one at
 a time.
 
-On Rust 1.97.1 for x86-64 Linux, `make size` links the minimal live
-learn-and-predict example at 449,088 bytes. The same release profile links an
-empty Rust example at 285,880 bytes, giving a same-build approximate Vista
-increment of 163,208 bytes. These are toolchain and target measurements, not
-portable guarantees. `make size-check` enforces a 475,000-byte regression
-ceiling, which can be changed with `MAX_EMBEDDED_BYTES=...`; `make size-full`
-measures the all-feature build.
+On Rust 1.97.1 for `x86_64-unknown-linux-gnu`, `make size` links the minimal
+live learn-and-predict example at 447,280 bytes. The same release profile links
+an empty Rust example at 285,864 bytes, giving a same-build approximate Vista
+increment of 161,416 bytes. The all-feature example is 552,056 bytes. These are
+toolchain and target measurements, not portable guarantees. `make size-check`
+enforces a 475,000-byte native regression ceiling, which can be changed with
+`MAX_EMBEDDED_BYTES=...`; `make size-full` measures the all-feature build.
+
+For `x86_64-unknown-linux-musl`, the corresponding empty, minimal, incremental,
+and all-feature measurements are 373,216, 541,152, 167,936, and 647,648 bytes.
+Use `make check-musl` and `make size-musl`. Vista itself has no native
+dependencies, but a consuming application's dependencies and build scripts
+determine whether its final executable remains fully statically linked.
 
 `make bench-tiny` feeds 100,000 observations through the sequence-only tiny
 configuration. The current synthetic run retains 64 templates, 64 surfaces,
-192 contexts, and 192 followers with a 52,504-byte model heap estimate. The
+192 contexts, and 192 followers with a 75,544-byte model heap estimate. The
 estimate describes retained structures, not allocator RSS, and real data can
 produce a different mix up to the configured hard bounds.
 
@@ -161,7 +193,7 @@ observation collection:
 ```rust
 # use vista::{Config, Trainer};
 let mut trainer = Trainer::new(Config::default());
-// trainer.observe(observation);
+// trainer.observe(observation)?;
 let predictor = trainer.finish();
 # let _ = predictor;
 ```
@@ -178,15 +210,34 @@ complete strings into every context. All collections are bounded by `Config`.
 Prediction consults only bounded suffix, cache, context, and candidate indexes;
 it does not scan the original history.
 
+PPM contexts own one template-ID vector each. Eviction, membership, follower,
+and lookup indexes reference checked context IDs instead of cloning those
+vectors. Snapshots serialize logical contexts in deterministic order and never
+persist the transient IDs.
+
+`ModelStats::retained_string_bytes` reports the logical bytes owned by retained
+items, templates, slots, and retrieval-index keys. Eviction, forgetting, and
+clearing release those charges.
+
 Run the release-mode one-million-event ingestion and snapshot check with:
 
 ```sh
 make bench-million
+make bench-memory
 ```
 
 The target prints ingestion throughput, prediction percentiles, retained model
 counts, estimated heap bytes, snapshot bytes, and snapshot load time. These are
 measurements for the current machine, not fixed performance promises.
+`make bench-memory` additionally records peak RSS with `/usr/bin/time -v` in
+`target/bench-memory.txt`; it is an optional local diagnostic, not part of
+`make verify`.
+
+The 2026-08-09 synthetic million-event run ingested 48,470 events/s with a
+60-us prediction p95, retained an estimated 686,999 heap bytes and 14,063
+logical string bytes, wrote a 202,394-byte snapshot, restored it in 2 ms, and
+peaked at 5,768 KiB RSS. These values were measured from the worktree based on
+commit `a8d51a6` and must be remeasured for a consumer's corpus and hardware.
 
 ## Snapshots
 
@@ -224,8 +275,10 @@ checksum. Identical state produces identical bytes. Corrupt, truncated,
 oversized, incompatible, or trailing data is rejected before a predictor is
 returned.
 
-Version 1 is the only supported format. A different version, unknown feature
-bit, adapter key, or normalized configuration is rejected rather than guessed.
+Version 2 is the only supported format. It fingerprints all byte limits and
+enforces cumulative snapshot bytes while reading and writing. Version 1 and any
+other version, unknown feature bit, adapter key, or normalized configuration is
+rejected rather than guessed.
 
 Snapshots also record each adapter's `snapshot_key`. Stateful normalizers,
 tokenizers, or matchers must override that method so the key changes whenever
@@ -240,6 +293,9 @@ temporary-file creation, flushing, `fsync`, and atomic rename.
 
 | Setting | Default | Tiny | Purpose |
 |---|---:|---:|---|
+| `max_string_bytes` | 65,536 | 1,024 | Maximum bytes in one retained input or derived string |
+| `max_retained_string_bytes` | 67,108,864 | 65,536 | Total logical bytes in retained strings |
+| `max_snapshot_bytes` | 134,217,728 | 1,048,576 | Total encoded snapshot bytes |
 | `max_templates` | 16,384 | 64 | Retained normalized sequence symbols |
 | `max_surfaces` | 32,768 | 128 | Retained concrete historical items |
 | `max_streams` | 256 | 4 | Independent live sequence histories |
@@ -278,6 +334,8 @@ context depth, prediction/update latency percentiles, memory, snapshot size/load
 time, normalization ratio, and simulated completion keystroke savings.
 Latency percentiles use a fixed 65-bucket logarithmic histogram, so ordered
 evaluation retains bounded metric state instead of one duration per event.
+Snapshot measurement is typed as `Success`, `Failed`, or `NotMeasured`; a
+serialization failure is never reported as a zero-byte successful result.
 
 ```sh
 make evaluate
@@ -290,8 +348,10 @@ library does not parse shell-specific timestamp prefixes; sanitize and convert
 application history before evaluating it.
 
 `ResearchExport` writes deterministic integer sequences for external CPT+,
-IPredict PPM/AKOM, and PBCT comparisons. See `tools/README.md`. External research
-projects are not downloaded by the build and are not runtime dependencies.
+IPredict PPM/AKOM, and PBCT comparisons. IDs start at one, SPMF uses `-1` and
+`-2` sentinels, and dictionary fields escape backslash, tab, carriage return,
+and newline. See `tools/README.md`. External research projects are not
+downloaded by the build and are not runtime dependencies.
 
 ## Retention and privacy
 
@@ -309,6 +369,10 @@ its neighbors.
 
 ## Development
 
+The repository pins the official Rust 1.97.1 toolchain, rustfmt, Clippy,
+rust-analyzer, and the `x86_64-unknown-linux-musl` standard library in
+`rust-toolchain.toml`. CI and the Nix shell use the same compiler version.
+
 ```sh
 make build
 make run
@@ -316,4 +380,21 @@ make test
 make verify
 make evaluate
 make bench-million
+make check-musl
+make size-musl
 ```
+
+The minimized Nix shell contains only the pinned Rust toolchain and command-line
+tools used by the Makefile:
+
+```sh
+nix flake show
+nix develop -c make verify
+nix develop -c make check-musl
+```
+
+The measurements above use Rust 1.97.1, dated 2026-08-09, for the GNU and musl
+x86-64 Linux targets. Synthetic and fixture evaluations pass, but they are not
+a production-quality acceptance result. That gate requires a sanitized
+chronological corpus, the production limits and normalizer, a predefined recent
+slice, and approval to report aggregates.

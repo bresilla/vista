@@ -13,9 +13,9 @@ fn observation(position: u64, value: &str) -> Observation {
 
 fn trained() -> Predictor {
     let mut predictor = Predictor::new(Config::tiny());
-    predictor.observe(observation(1, "build"));
-    predictor.observe(observation(2, "test"));
-    predictor.observe(observation(3, "build"));
+    predictor.observe(observation(1, "build")).unwrap();
+    predictor.observe(observation(2, "test")).unwrap();
+    predictor.observe(observation(3, "build")).unwrap();
     predictor
 }
 

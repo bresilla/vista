@@ -1,6 +1,8 @@
 use std::io::BufRead;
 
-use vista::{Baseline, Config, Evaluation, Item, Observation, Position, StreamId};
+use vista::{
+    Baseline, Config, Evaluation, Item, Observation, Position, SnapshotMeasurement, StreamId,
+};
 
 fn observation(position: u64, value: &str) -> Observation {
     Observation {
@@ -80,11 +82,19 @@ fn main() {
     println!("token_associations={}", metrics.token_associations);
     println!("partial_associations={}", metrics.partial_associations);
     println!("heap_bytes={}", metrics.estimated_heap_bytes);
-    println!("snapshot_bytes={}", metrics.snapshot_bytes);
-    println!(
-        "snapshot_load_us={}",
-        metrics.snapshot_load_time.as_micros()
-    );
+    match &metrics.snapshot {
+        SnapshotMeasurement::Success { bytes, load_time } => {
+            println!("snapshot_status=success");
+            println!("snapshot_bytes={bytes}");
+            println!("snapshot_load_us={}", load_time.as_micros());
+        }
+        SnapshotMeasurement::Failed { stage, error } => {
+            println!("snapshot_status=failed");
+            println!("snapshot_stage={stage:?}");
+            println!("snapshot_error={error}");
+        }
+        SnapshotMeasurement::NotMeasured => println!("snapshot_status=not-measured"),
+    }
     println!(
         "mean_predict_us={}",
         metrics.mean_prediction_latency.as_micros()

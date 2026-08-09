@@ -33,7 +33,7 @@ fn main() {
     let started = Instant::now();
     let mut trainer = Trainer::new(config.clone());
     for position in 0..EVENTS {
-        trainer.observe(observation(position));
+        trainer.observe(observation(position)).unwrap();
     }
     let predictor = trainer.finish();
     let ingest = started.elapsed();
@@ -107,6 +107,7 @@ fn main() {
     println!("stream_history_entries={}", stats.stream_history_entries);
     println!("token_associations={}", stats.token_associations);
     println!("estimated_heap_bytes={}", stats.estimated_heap_bytes);
+    println!("retained_string_bytes={}", stats.retained_string_bytes);
     println!("snapshot_bytes={}", snapshot.len());
     println!("snapshot_load_ms={}", load.as_millis());
 }

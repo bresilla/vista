@@ -13,6 +13,12 @@ PREFIX ?= $(HOME)/.local
 HISTORY ?=
 OUTPUT ?= target/research
 MAX_EMBEDDED_BYTES ?= 475000
+MAX_FILE_LOC ?= 600
+MUSL_TARGET ?= x86_64-unknown-linux-musl
+CARGO_TARGET_DIR ?= $(TOP_DIR)/target
+RELEASE_DIR = $(CARGO_TARGET_DIR)/$(if $(strip $(CARGO_BUILD_TARGET)),$(CARGO_BUILD_TARGET)/,)release
+EXAMPLES_DIR = $(RELEASE_DIR)/examples
+TIME ?= $(shell type -P time 2>/dev/null)
 
 HAS_REL := $(shell command -v git-rel 2>/dev/null)
 
@@ -20,7 +26,7 @@ $(info ------------------------------------------)
 $(info Project: $(PROJECT_NAME) v$(PROJECT_VERSION))
 $(info ------------------------------------------)
 
-.PHONY: build b compile c run r evaluate research-export bench-million bench-tiny size size-full size-check test test-minimal t check check-minimal check-all test-all clippy rustdoc fmt fmt-check clean verify release help h
+.PHONY: build b compile c run r evaluate research-export bench-million bench-memory bench-tiny size size-full size-check check-musl size-musl loc-check test test-minimal t check check-minimal check-all test-all clippy rustdoc fmt fmt-check clean verify release help h
 
 build:
 	@$(CARGO) build --lib
@@ -48,23 +54,46 @@ research-export:
 bench-million:
 	@$(CARGO) run --release --features snapshot --example million
 
+bench-memory:
+	@if [ -z "$(TIME)" ]; then echo "GNU time is required"; exit 1; fi
+	@mkdir -p "$(CARGO_TARGET_DIR)"
+	@$(CARGO) build --release --features snapshot --example million
+	@"$(TIME)" -v "$(EXAMPLES_DIR)/million" > "$(CARGO_TARGET_DIR)/bench-memory.txt" 2>&1
+	@cat "$(CARGO_TARGET_DIR)/bench-memory.txt"
+
 bench-tiny:
 	@$(CARGO) run --release --no-default-features --example tiny
 
 size:
 	@$(CARGO) build --release --no-default-features --example empty --example embedded
-	@stat -c 'empty_rust_bytes=%s' target/release/examples/empty
-	@stat -c 'embedded_example_bytes=%s' target/release/examples/embedded
-	@empty=$$(stat -c %s target/release/examples/empty); embedded=$$(stat -c %s target/release/examples/embedded); echo "vista_incremental_bytes=$$((embedded - empty))"
-	@size target/release/examples/embedded
+	@stat -c 'empty_rust_bytes=%s' "$(EXAMPLES_DIR)/empty"
+	@stat -c 'embedded_example_bytes=%s' "$(EXAMPLES_DIR)/embedded"
+	@empty=$$(stat -c %s "$(EXAMPLES_DIR)/empty"); embedded=$$(stat -c %s "$(EXAMPLES_DIR)/embedded"); echo "vista_incremental_bytes=$$((embedded - empty))"
+	@size "$(EXAMPLES_DIR)/embedded"
 
 size-full:
 	@$(CARGO) build --release --all-features --example embedded
-	@stat -c 'full_embedded_example_bytes=%s' target/release/examples/embedded
-	@size target/release/examples/embedded
+	@stat -c 'full_embedded_example_bytes=%s' "$(EXAMPLES_DIR)/embedded"
+	@size "$(EXAMPLES_DIR)/embedded"
 
 size-check: size
-	@bytes=$$(stat -c %s target/release/examples/embedded); if [ "$$bytes" -gt "$(MAX_EMBEDDED_BYTES)" ]; then echo "embedded example $$bytes exceeds $(MAX_EMBEDDED_BYTES) bytes"; exit 1; fi
+	@bytes=$$(stat -c %s "$(EXAMPLES_DIR)/embedded"); if [ "$$bytes" -gt "$(MAX_EMBEDDED_BYTES)" ]; then echo "embedded example $$bytes exceeds $(MAX_EMBEDDED_BYTES) bytes"; exit 1; fi
+
+check-musl:
+	@$(MAKE) CARGO_BUILD_TARGET=$(MUSL_TARGET) check check-minimal check-all
+
+size-musl:
+	@$(MAKE) CARGO_BUILD_TARGET=$(MUSL_TARGET) size size-full
+
+loc-check:
+	@failed=0; while IFS= read -r -d '' file; do \
+		if [ -f "$$file" ]; then \
+			lines=$$(wc -l < "$$file"); \
+			if [ "$$lines" -gt "$(MAX_FILE_LOC)" ]; then \
+				printf '%s %s\n' "$$lines" "$$file"; failed=1; \
+			fi; \
+		fi; \
+	done < <(git ls-files -co --exclude-standard -z); exit $$failed
 
 test:
 	@$(CARGO) test --all-targets --all-features
@@ -107,7 +136,7 @@ test-all:
 clean:
 	@$(CARGO) clean
 
-verify: fmt-check check check-minimal test-minimal test check-all test-all clippy rustdoc size-check
+verify: loc-check fmt-check check check-minimal test-minimal test check-all test-all clippy rustdoc size-check
 
 release:
 	@if [ -z "$(HAS_REL)" ]; then \
@@ -131,10 +160,14 @@ help:
 	@echo "  evaluate     Evaluate synthetic or HISTORY=/path input"
 	@echo "  research-export  Export HISTORY=/path to OUTPUT=target/research"
 	@echo "  bench-million  Ingest and restore one million events"
+	@echo "  bench-memory Capture million-event metrics and peak RSS"
 	@echo "  bench-tiny   Saturate and report the tiny sequence-only model"
 	@echo "  size         Measure the minimal release embedding example"
 	@echo "  size-full    Measure the all-feature embedding example"
 	@echo "  size-check   Enforce MAX_EMBEDDED_BYTES for the minimal example"
+	@echo "  check-musl   Check all feature sets for MUSL_TARGET"
+	@echo "  size-musl    Measure minimal and full MUSL_TARGET examples"
+	@echo "  loc-check    Enforce MAX_FILE_LOC for maintained files"
 	@echo "  test         Run all tests"
 	@echo "  test-minimal Run sequence-only and snapshot-only tests"
 	@echo "  check        Check default-feature library and examples"

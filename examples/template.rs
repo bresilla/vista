@@ -36,13 +36,15 @@ fn main() {
     let mut predictor = Predictor::builder(Config::default())
         .normalizer(CommandNormalizer)
         .build();
-    predictor.replay([
-        observation(1, "prepare"),
-        observation(2, "ssh alice@host1"),
-        observation(3, "prepare"),
-        observation(4, "ssh bob@host2"),
-        observation(5, "prepare"),
-    ]);
+    predictor
+        .replay([
+            observation(1, "prepare"),
+            observation(2, "ssh alice@host1"),
+            observation(3, "prepare"),
+            observation(4, "ssh bob@host2"),
+            observation(5, "prepare"),
+        ])
+        .unwrap();
     for prediction in predictor.predict(&Query::new(StreamId(1), Position(6), 3)) {
         println!(
             "{:.6} {} [{}]",
