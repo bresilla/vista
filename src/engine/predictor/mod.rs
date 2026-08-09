@@ -9,18 +9,18 @@ mod predict;
 
 pub use builder::PredictorBuilder;
 
-use crate::adapters::{CandidateMatcher, ItemMatcher, Normalizer, Tokenizer};
+use crate::adapters::{CandidateMatcher, ItemMatcher, MatchInput, Normalizer, Tokenizer};
 #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
 use crate::adapters::{PartialIndex, TokenIndex};
 use crate::api::{Config, Item, Observation, Query, StreamId, StreamTable, SurfaceId, TemplateId};
 #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
 use crate::engine::ContextIndex;
-use crate::engine::{Candidates, Prediction, RankInput, rank};
+use crate::engine::{Candidates, Channel, Prediction, RankInput, rank, repair};
 #[cfg(any(feature = "recent-cache", feature = "snapshot"))]
 use crate::model::RecentCache;
 #[cfg(feature = "surface-indexes")]
 use crate::model::context_ratio;
-use crate::model::{Dictionary, Ppm, surface_ratio};
+use crate::model::{CorrectionLog, CorrectionPair, Dictionary, Ppm, surface_ratio};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ModelStats {
@@ -37,6 +37,7 @@ pub struct ModelStats {
     pub token_associations: usize,
     pub partial_associations: usize,
     pub observations: u64,
+    pub correction_pairs: usize,
     pub retained_string_bytes: usize,
     pub estimated_heap_bytes: usize,
 }
@@ -59,6 +60,7 @@ pub struct Predictor {
     pub(crate) tokens: TokenIndex,
     #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
     pub(crate) partials: PartialIndex,
+    pub(crate) corrections: CorrectionLog,
     pub(crate) clock: u64,
 }
 
@@ -106,6 +108,7 @@ impl Predictor {
                 config.max_partial_associations,
                 config.max_partial_chars_per_item,
             ),
+            corrections: CorrectionLog::new(config.max_correction_pairs),
             normalizer: Box::new(normalizer),
             #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
             tokenizer: Box::new(tokenizer),

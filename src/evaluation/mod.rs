@@ -3,10 +3,14 @@ use std::time::{Duration, Instant};
 
 mod accumulator;
 mod baseline;
+mod correction;
 mod runner;
 
 use accumulator::Accumulator;
 use baseline::BaselineState;
+pub use correction::{
+    CorrectionAttempt, CorrectionEvaluation, CorrectionMetrics, CorrectionReport,
+};
 pub use runner::Evaluation;
 
 use crate::{

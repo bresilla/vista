@@ -22,15 +22,17 @@ mod research;
 mod snapshot;
 
 pub use adapters::{
-    CandidateMatcher, ContainsMatcher, IdentityNormalizer, ItemMatcher, NormalizedItem, Normalizer,
-    Tokenizer, WhitespaceTokenizer,
+    CandidateMatcher, ContainsMatcher, IdentityNormalizer, ItemMatcher, MatchInput, NormalizedItem,
+    Normalizer, SimilarityMatcher, Tokenizer, WhitespaceTokenizer,
 };
 pub use api::{Config, Feature, InputError, Item, Observation, Position, Query, StreamId, Weights};
 pub use engine::{Explanation, ModelStats, Prediction, Predictor, PredictorBuilder, Trainer};
 #[cfg(feature = "evaluation")]
 pub use evaluation::{
-    Baseline, Evaluation, EvaluationMetrics, EvaluationReport, SnapshotMeasurement, SnapshotStage,
+    Baseline, CorrectionAttempt, CorrectionEvaluation, CorrectionMetrics, CorrectionReport,
+    Evaluation, EvaluationMetrics, EvaluationReport, SnapshotMeasurement, SnapshotStage,
 };
+pub use model::CorrectionPair;
 #[cfg(feature = "research")]
 pub use research::{ResearchExport, ResearchExportError};
 #[cfg(feature = "snapshot")]

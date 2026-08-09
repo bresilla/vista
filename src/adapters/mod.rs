@@ -2,7 +2,7 @@ mod matcher;
 mod normalizer;
 mod tokenizer;
 
-pub use matcher::{CandidateMatcher, ContainsMatcher, ItemMatcher};
+pub use matcher::{CandidateMatcher, ContainsMatcher, ItemMatcher, MatchInput, SimilarityMatcher};
 pub use normalizer::{IdentityNormalizer, NormalizedItem, Normalizer};
 pub use tokenizer::{Tokenizer, WhitespaceTokenizer};
 

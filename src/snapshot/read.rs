@@ -317,6 +317,17 @@ impl Predictor {
                 }
             }
         }
+        let correction_count = input.count(config.max_correction_pairs, "correction pairs")?;
+        let mut corrections = Vec::with_capacity(correction_count);
+        for _ in 0..correction_count {
+            let typed = read_item(&mut input)?;
+            let corrected = read_item(&mut input)?;
+            let count = input.u64()?;
+            if count == 0 {
+                return Err(SnapshotError::Corrupt("correction count"));
+            }
+            corrections.push((CorrectionPair { typed, corrected }, count));
+        }
         let (reader, checksum, bytes_read, max_bytes) = input.finish();
         verify_checksum_and_eof(reader, checksum, bytes_read, max_bytes)?;
         for surface in dictionary.surfaces.values() {
@@ -351,6 +362,7 @@ impl Predictor {
             config.max_partial_associations,
             config.max_partial_chars_per_item,
         );
+        predictor.corrections = CorrectionLog::restore(config.max_correction_pairs, corrections);
         predictor.clock = clock;
         if predictor.retained_string_bytes() > config.max_retained_string_bytes {
             return Err(SnapshotError::LimitExceeded("retained string bytes"));

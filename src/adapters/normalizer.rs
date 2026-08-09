@@ -13,6 +13,17 @@ pub struct NormalizedItem {
 pub trait Normalizer: Send + Sync {
     fn normalize(&self, item: &Item) -> NormalizedItem;
 
+    /// Rebuilds a concrete item from a predicted template and caller slots.
+    ///
+    /// This is the inverse of [`Normalizer::normalize`] and lets a predicted
+    /// shape carry the arguments of the item being completed rather than the
+    /// arguments of whichever historical surface was retained. Returning `None`
+    /// rejects the template, which the default does whenever slots are present
+    /// but no inverse is implemented.
+    fn render(&self, template: &Item, slots: &[Feature]) -> Option<Item> {
+        slots.is_empty().then(|| template.clone())
+    }
+
     fn snapshot_key(&self) -> &str {
         std::any::type_name::<Self>()
     }

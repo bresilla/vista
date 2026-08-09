@@ -40,6 +40,9 @@ pub struct Config {
     pub recent_cache_items: usize,
     pub recent_cache_weight: f64,
     pub recent_cache_half_life: u64,
+    pub max_repair_iterations: usize,
+    pub max_correction_pairs: usize,
+    pub channel_weight: f64,
     pub weights: Weights,
 }
 
@@ -65,6 +68,9 @@ impl Default for Config {
             recent_cache_items: 256,
             recent_cache_weight: 0.20,
             recent_cache_half_life: 32,
+            max_repair_iterations: 3,
+            max_correction_pairs: 4_096,
+            channel_weight: 1.0,
             weights: Weights::default(),
         }
     }
@@ -97,6 +103,9 @@ impl Config {
             recent_cache_items: 16,
             recent_cache_weight: 0.20,
             recent_cache_half_life: 16,
+            max_repair_iterations: 1,
+            max_correction_pairs: 32,
+            channel_weight: 1.0,
             weights: Weights {
                 context: 0.35,
                 surface: 0.20,
@@ -129,6 +138,12 @@ impl Config {
         }
         self.recent_cache_weight = self.recent_cache_weight.clamp(0.0, 0.5);
         self.recent_cache_half_life = self.recent_cache_half_life.max(1);
+        self.max_repair_iterations = self.max_repair_iterations.clamp(1, 8);
+        self.max_correction_pairs = self.max_correction_pairs.max(1);
+        if !self.channel_weight.is_finite() {
+            self.channel_weight = 1.0;
+        }
+        self.channel_weight = self.channel_weight.clamp(0.0, 10.0);
         let defaults = Weights::default();
         normalise_weight(&mut self.weights.context, defaults.context);
         normalise_weight(&mut self.weights.surface, defaults.surface);

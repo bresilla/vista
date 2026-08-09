@@ -68,7 +68,7 @@ fn dictionary_identifier_offsets(bytes: &[u8]) -> (Vec<usize>, Vec<usize>) {
         skip_string(bytes, offset);
     }
 
-    let mut offset = 8 + 4 + 8 + 8 + 23 * 8;
+    let mut offset = 8 + 4 + 8 + 8 + 26 * 8;
     for _ in 0..3 {
         skip_string(bytes, &mut offset);
     }
