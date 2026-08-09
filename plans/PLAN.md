@@ -1,4 +1,4 @@
-# Vista hardening and completion plan
+# Vista correction-quality plan
 
 > This is the only plan file. Execute phases in order, run every gate, and update
 > the table here. Do not create other plan/index files. Stop on a STOP condition;
@@ -6,24 +6,26 @@
 
 ## Status
 
-- Planned at commit `a8d51a6`, 2026-08-09.
-- Audited state: clean `main`, one dependency-free deterministic predictor, no
-  legacy FTRL/fixed-transition path, native `make verify` passing.
-- Overall: phases 1–8 are complete; real-corpus acceptance is blocked on the
-  operator inputs listed in phase 9, and phase 10 remains dependent on it.
+- Planned at commit `ac845e4`, 2026-08-09.
+- Audited state: branch `feat/rendered-completions`, three commits adding
+  `predict_rendered`, `predict_aligned`, `MatchInput`/`score_match`,
+  `SimilarityMatcher`, and history-driven token arbitration. 73 integration /
+  16 unit / 14 minimal tests green across every feature combination.
+- Overall: incomplete. Correction quality is unmeasured, the repair loop runs
+  once, and one hardcoded constant still decides misspelling-versus-argument.
 
 | Phase | Work | Priority | Effort | Depends | Status |
 |---|---|---:|---:|---|---|
-| 1 | Modularize source and enforce 600 LOC | P0 | L | — | DONE |
-| 2 | Define stream/cache isolation | P0 | S | 1 | DONE |
-| 3 | Bound retained and snapshot bytes | P0 | L | 1–2 | DONE |
-| 4 | Produce valid research exports | P1 | S | 1 | DONE |
-| 5 | Report snapshot evaluation failures | P1 | M | 3 | DONE |
-| 6 | Intern PPM context identities | P1 | L | 3 | DONE |
-| 7 | Pin and verify musl toolchain | P1 | M | 1 | DONE |
-| 8 | Simplify Nix development shell | P2 | M | 7 | DONE |
-| 9 | Run real-corpus quality gate | P1 | M | 2–6 | BLOCKED: corpus required |
-| 10 | Refresh final documentation | P1 | S | 1–9 | BLOCKED: phase 9 |
+| 1 | Correction evaluation harness | P0 | M | — | TODO |
+| 2 | Mine correction pairs from history | P0 | M | 1 | TODO |
+| 3 | Iterative repair with safety constraints | P0 | M | 1–2 | TODO |
+| 4 | Noisy-channel repair scoring | P1 | L | 1–3 | TODO |
+| 5 | Learned substring edit model | P2 | L | 4 | TODO |
+| 6 | Symmetric-delete retrieval | P2 | M | 1 | TODO |
+| 7 | Pin and verify musl toolchain | P1 | M | — | TODO |
+| 8 | Simplify Nix development shell | P2 | M | 7 | TODO |
+| 9 | Run real-corpus quality gate | P1 | M | 1–4 | BLOCKED: corpus required |
+| 10 | Refresh final documentation | P1 | S | 1–9 | TODO |
 
 Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED: reason`, `REJECTED: reason`.
 
@@ -34,8 +36,8 @@ Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED: reason`, `REJECTED: reason`.
 - No maintained repository file may exceed **600 physical lines**, including
   Rust, tests, examples, Makefile, CI, Markdown, and this plan. Generated/ignored
   `.git/`, `target/`, and `.direnv/` contents are excluded.
-- Add `make loc-check`, include it in `make verify`, and count tracked plus
-  nonignored untracked files. The target prints every violation and exits nonzero.
+- `make loc-check` counts tracked plus nonignored untracked files, prints every
+  violation, exits nonzero, and stays in `make verify`.
 - Comments describe only what code does; no rationale/changelog comments and no
   comment volume above roughly 20% of implementation.
 - Keep one current pre-1.0 path; do not leave forwarding/legacy implementations.
@@ -47,377 +49,423 @@ Statuses: `TODO`, `IN PROGRESS`, `DONE`, `BLOCKED: reason`, `REJECTED: reason`.
 
 ## Product boundary
 
-Vista predicts complete previously observed items. It never generates unseen
-text. One variable-order PPM path, integrated recent cache, normalization,
-surface selection, and bounded retrieval indexes work together. Learned state is
-the compiled snapshot, not neural weights. This plan does not add a second
-predictor, LLM, database, service, or application-history reader.
+Vista predicts complete previously observed items and repairs an item by
+aligning it against them. It never generates unseen text from a model of
+language, contains no parser for any input syntax, and holds no authored rules,
+templates, dictionaries, or confusion lists. Every decision it makes is taken
+from observed history. This plan does not add a second predictor, LLM, database,
+service, or application-history reader.
 
-## Audited baseline
-
-Passed: `make verify`, `make run`, synthetic/fixture evaluation, research export,
-`make bench-tiny`, `make bench-million`, and `make size-full`.
-
-| Rust 1.94.0 x86-64 Linux measurement | Value |
-|---|---:|
-| all-feature tests | 60 |
-| empty / minimal / Vista increment | 299,664 / 463,504 / 163,840 B |
-| all-feature example | 553,616 B |
-| tiny heap estimate | 52,504 B |
-| million ingest / p95 | 63,154 events/s / 88 us |
-| million heap / snapshot / load | 481,175 B / 202,370 B / 1 ms |
-
-The host and Nix shell currently lack the musl Rust standard library. An earlier
-configured environment built musl; reproducible provisioning remains open.
+Normalization stays optional. `predict_aligned` must keep working with
+`Predictor::new(Config::default())` and no configuration of any kind.
 
 ---
 
-## Phase 1: Modularize source and enforce 600 LOC
+## Research basis
 
-### Decision: folders, not multiple crates
+Two results decide the ordering of this plan. Both come from published spelling
+correction work whose problem shape matches Vista's: correct a short string from
+a log of previously seen strings, without a trusted lexicon.
 
-Keep one Cargo package/library and organize it into domain folders. Do **not**
-add `[workspace]` or `crates/` now.
+### The task is a noisy channel
 
-Evidence: Vista is 4,924 library LOC across 23 files, exposes one API, has no
-dependencies, and `Predictor`/snapshot deeply share crate-private state. Feature
-gates already remove evaluation/research from tiny builds, and fat LTO handles
-unused code. Multiple crates would force cross-crate APIs, feature forwarding,
-manifests, and compatibility work without reducing binary size.
+`best = argmax P(intended) x P(typed | intended)`, a *source/language model* term
+and an *error model* term (Kernighan et al. 1990; Brill & Moore 2000).
 
-Reconsider crates only if a component needs independent publishing/versioning,
-evaluation/research gains isolated dependencies, a committed `no_std` core is
-required, another project consumes a lower-level component directly, or measured
-compile/team ownership proves a benefit.
+Vista already owns a strong source model: variable-order PPM to order 8 with
+escape-mass backoff, conditioned on the current stream. It owns no error model at
+all. `TYPO_SIMILARITY = 0.5` in `src/engine/alignment.rs` is a boolean standing
+in for one.
 
-### Target tree
+### The source model dominates; the error model barely matters
 
-```text
-src/
-├── lib.rs
-├── api/       {mod,config,feature,item,observation,stream}.rs
-├── adapters/  {mod,matcher,normalizer,tokenizer}.rs
-├── model/     {mod,cache,dictionary,ppm,statistics}.rs
-├── engine/
-│   ├── mod.rs, candidates.rs, context.rs, explanation.rs, pruning.rs, ranking.rs
-│   ├── predictor/{mod,builder,observe,predict,maintenance}.rs
-│   └── trainer.rs
-├── snapshot/  {mod,codec,read,write,validate}.rs
-├── evaluation/{mod,accumulator,baseline,runner}.rs
-└── research/  mod.rs
-```
+Cucerzan & Brill, EMNLP 2004, corrected web queries against query logs with no
+trusted lexicon. Ablation on 1044 queries, accuracy in percent, the `Misspelled`
+column being recall over 180 misspelled queries:
 
-Map flat files by domain:
+| Configuration | All | Valid | Misspelled |
+|---|---:|---:|---:|
+| Full system | 81.8 | 84.8 | **67.2** |
+| All edits equal (crippled error model) | 80.4 | 83.3 | **66.1** |
+| Unigrams only (crippled source model) | 54.7 | 57.4 | **41.7** |
+| 1 iteration only | 80.9 | 88.0 | **47.2** |
+| 2 iterations only | 81.3 | 84.4 | 66.7 |
+| No lexicon | 70.3 | 72.2 | 61.1 |
+| No query log | 77.0 | 82.1 | 52.8 |
 
-- `config feature item observation stream` -> `api/`.
-- `matcher normalizer tokenizer` -> `adapters/`.
-- `cache dictionary ppm statistics` -> `model/`.
-- `candidates context explanation pruning ranking trainer` -> `engine/`.
-- `predictor.rs` -> the `engine/predictor/` files by responsibility.
-- `snapshot.rs` -> `snapshot/` codec/read/write/validation files.
-- `evaluation.rs` -> `evaluation/` accumulator/baseline/runner files.
-- `export.rs` -> `research/mod.rs` unless it approaches 600 LOC later.
+Flattening the error model costs **1.1 points**. Flattening the source model
+costs **25.5 points**. Running one iteration instead of the full loop costs
+**20.0 points**.
 
-Folder `mod.rs` files apply feature gates and re-export public API with `pub use`
-and internals only with `pub(crate) use`. `src/lib.rs` keeps crate docs, domain
-declarations, feature gates, and the exact existing root public exports. Do not
-make internal state public to ease imports. Only `src/lib.rs` may remain directly
-under `src/`.
+A second evaluation on genuinely reformulated query pairs repeats the ranking:
+full 73.1, all-edits-equal 69.9, unigrams-only 43.0, one-iteration-only 45.5.
+Removing the trusted lexicon entirely (61.1) beat keeping the lexicon while
+discarding the logs (52.8) — direct evidence that observed history outperforms
+an authored word list.
 
-### Current LOC violations and required splits
+**Consequence for Vista.** Iteration is worth roughly twenty times what a learned
+error model is worth. Phase 3 before phase 5. Phase 5 carries a STOP because the
+evidence predicts it will not pay for itself.
 
-| File | Audit LOC | Required split |
-|---|---:|---|
-| `tests/predictor.rs` | 1,247 | shared `tests/support/mod.rs` plus sequence, normalization, snapshot, evaluation, research integration tests |
-| `plans/PLAN.md` | 1,177 before this revision | keep this replacement <=600 LOC |
-| `src/snapshot.rs` | 953 | `snapshot/{mod,codec,read,write,validate}.rs` |
-| `src/evaluation.rs` | 644 | `evaluation/{mod,accumulator,baseline,runner}.rs` |
-| `src/predictor.rs` | 614 | `engine/predictor/{mod,builder,observe,predict,maintenance}.rs` |
+### Why Brill & Moore appear to disagree
 
-Split tests by behavior, not arbitrary line ranges:
+Brill & Moore, ACL 2000, report large error-model gains: 1-best accuracy 87.0
+with single-character edits, 92.9 at substring window 2, 93.6 at window 3, and
+95.0 with position information. Their generic edit `a -> b` over strings gives
 
-- `tests/sequence.rs`: sequence, streams, cache, probability, trainer, bounds.
-- `tests/normalization.rs`: templates, slots, surfaces, matcher/tokenizer, ranking.
-- `tests/snapshot.rs`: persistence, corruption, compatibility, failure atomicity.
-- `tests/evaluation.rs`: metrics, chronology, Unicode completion, stress quality.
-- `tests/research.rs`: deterministic/gapped/interleaved exports.
-- `tests/support/mod.rs`: only shared item/observation/query helpers.
+`P(s|w) = max over R in Part(w), T in Part(s) of product P(Ti | Ri)`
 
-Add explicit `[[test]] required-features` entries for snapshot/evaluation/research
-targets where needed. Do not duplicate helpers across test crates.
+trained by aligning each pair by single-character minimum edit distance, adding
+the N adjacent edits around every non-match, and estimating
+`P(a -> b) = count(a -> b) / count(a)`.
 
-### Snapshot-key hazard
+Those numbers were measured against a **null language model** assigning equal
+probability to all 200,000 dictionary words. With no source model the error model
+is the only signal. Vista is in Cucerzan & Brill's regime, not this one. Do not
+cite Brill & Moore's headline gains as justification for phase 5.
 
-Built-in adapter keys default to `type_name::<Self>()`; moving modules would
-silently change version-1 keys. Before moving, override built-ins with the live
-old values and test them:
+Window size saturates at 2–3 in both of their tables; anything wider is wasted.
 
-- `vista::normalizer::IdentityNormalizer`;
-- `vista::tokenizer::WhitespaceTokenizer`;
-- `vista::matcher::ContainsMatcher`.
+### Free supervision already sits in the observation stream
 
-Probe current values first. If they differ, lock the probed values. Leave custom
-adapter defaults unchanged. Equivalent pre/post histories must keep identical
-snapshot bytes. Phase 3, not this move, owns snapshot version 2.
+Cucerzan & Brill built their evaluation set by sampling successive queries from
+one user where the unweighted edit distance was at most
+`1 + (len(q1) + len(q2)) / 10` — one point change allowed per five characters.
+No annotation, no dictionary; the user's own retyping is the label.
 
-### `make loc-check` contract
+Vista records stream, position, and outcome for every observation. A failed item
+followed by a positionally adjacent successful item in the same stream is exactly
+such a pair. This is phase 2 and it costs nothing to collect.
 
-Add `MAX_FILE_LOC ?= 600`. Use Git's tracked/nonignored file list with NUL-safe
-paths, count physical lines, print `lines path` for each excess file, and fail if
-any exists. Exclude only ignored/generated directories, never hand-maintained
-file types. Add `.PHONY`, help text, and `loc-check` to `verify`.
+### Two safety constraints worth importing
+
+- No two *adjacent known* tokens may change in the same iteration. Cucerzan &
+  Brill use this to prevent `log wood -> dog food`.
+- The first iteration may not change a known token at all, so unknown-token
+  errors are resolved before any substitution of a real token.
+
+### Retrieval
+
+SymSpell's symmetric-delete scheme turns every edit type into deletes computed
+on both sides. A 5-character term within edit distance 3 needs 25 deletes rather
+than enumerating roughly 3,000,000 candidates, and the method is independent of
+the language being corrected. Vista's `PartialIndex` is a character 1/2/3-gram
+index; this is a retrieval swap, not a quality change.
+
+### Reference list
+
+- Cucerzan & Brill, *Spelling Correction as an Iterative Process that Exploits
+  the Collective Knowledge of Web Users*, EMNLP 2004.
+- Brill & Moore, *An Improved Error Model for Noisy Channel Spelling
+  Correction*, ACL 2000.
+- Kernighan, Church & Gale, *A Spelling Correction Program Based on a Noisy
+  Channel Model*, COLING 1990.
+- Ristad & Yianilos, *Learning String Edit Distance*, IEEE TPAMI 20(5), 1998.
+- Huang & Efthimiadis, *Analyzing and Evaluating Query Reformulation Strategies
+  in Web Search Logs*, CIKM 2009.
+- Wolf Garbe, *SymSpell*, symmetric-delete spelling correction.
+
+---
+
+## Phase 1: Correction evaluation harness
+
+### Goal
+
+Nothing in phases 2–6 can be judged today. `Evaluation` measures next-item
+prediction, not repair. Build the measurement before building the improvements.
 
 ### Steps
 
-1. Capture pre-move adapter keys, snapshot bytes, `make size`, `make size-full`,
-   feature checks, and test results under ignored `target/` output.
-2. Add `loc-check`; confirm it fails and lists the five audited violations.
-3. Add stable built-in adapter keys/tests; run `make verify` before moves.
-4. Create folders, move files with history, and remove all flat originals.
-5. Split predictor/snapshot/evaluation/tests by the responsibilities above.
-6. Update imports and narrow domain re-exports; avoid broad `use crate::*` inside
-   implementation modules.
-7. Preserve every current feature combination and root public import.
-8. Compare adapter keys, snapshot bytes, minimal/full sizes, and behavior.
-9. Update README architecture description; do not expose private module paths as
-   supported API.
-10. Run structural/LOC/full gates.
+1. Add `src/evaluation/correction.rs` behind the existing `evaluation` feature.
+2. Define `CorrectionMetrics`:
+   - `suggestions`, `opportunities`
+   - `precision` — correct repairs over repairs offered
+   - `recall` — correct repairs over pairs needing one
+   - `top_1_accuracy`, `top_3_accuracy`
+   - `false_positive_rate` — repairs offered where the input was already correct
+   - `abstention_rate` — inputs left untouched
+   - `mean_iterations`, `mean_latency`
+3. `CorrectionEvaluation::run(config, pairs, controls)` replays chronologically:
+   observe prior history, then repair the failed item, then compare to the known
+   good item. Never let a pair train the model before it is scored.
+4. `controls` are already-correct items. Offering a repair for one is a false
+   positive. Precision without this is meaningless.
+5. Report per-configuration so ablations are directly comparable, mirroring the
+   research table above.
 
-### Gates
+### Files
 
-```sh
-make loc-check
-make check-minimal
-make test-minimal
-make test
-make check-all
-make clippy
-make rustdoc
-make size
-make size-full
-make verify
-find src -maxdepth 1 -type f -name '*.rs' -print
-git diff --find-renames --stat
-```
+`src/evaluation/correction.rs`, `src/evaluation/mod.rs`, `tests/predictor_cases/correction.rs`.
 
-Expected: only `src/lib.rs` from the `find`; no maintained file >600 LOC; Git
-recognizes moves; public examples/tests need no import changes; keys/snapshots are
-identical. Minimal Vista increment and full example may grow no more than the
-lower of 1% or 4 KiB.
+### Gate
 
-### Done / STOP
+`make verify`. A fixture pair set under `tests/fixtures/` with at least 40 pairs
+and 40 controls, committed as synthetic data only. Record the phase-1 baseline
+numbers for today's single-pass repair in the status table.
 
-Done when one crate remains, all files satisfy 600 LOC, root API/features and
-snapshots are unchanged, no forwarding modules remain, size stays within limit,
-and all gates pass.
+### STOP
 
-STOP if internal state must become public, boundaries create an unsolved cycle,
-keys/snapshots/behavior change, size exceeds the limit, or a real independent
-crate boundary emerges.
-
-Suggested commit: `refactor: organize source modules`
+If measured baseline recall already exceeds 0.90 on the fixture set, stop and
+report; the fixture is too easy and phases 3–5 cannot be judged by it.
 
 ---
 
-## Phase 2: Define stream/cache isolation
+## Phase 2: Mine correction pairs from history
 
-Current code uses stream-local evidence then global fallback
-(`src/cache.rs:114-131`), and tests intentionally expose global evidence to an
-unseen stream. Adopt this contract unless explicitly rejected: `StreamId` is a
-continuity boundary, not a tenant boundary; streams never form direct transitions;
-gaps/breaks reset private continuity; global aggregate evidence may cross streams;
-separate privacy domains require separate predictors.
+### Goal
 
-Steps: document the contract, preserve global-fallback coverage, add an
-interleaved-stream no-cross-transition test, and preserve gap/break/eviction
-tests. Run `make test && make verify`.
+Collect `(failed, corrected)` pairs from the observation stream with no
+annotation, no dictionary, and no rules. These are both training data for phase 4
+and test data for phase 1.
 
-Done when continuity and privacy are unambiguous and separately tested. STOP if
-strict tenant isolation is chosen; that requires partitioning all global state.
+### Steps
 
-Suggested commit: `docs: define stream cache isolation`
+1. Add `src/model/corrections.rs` holding a bounded `CorrectionLog`.
+2. During `observe`, a pair is recorded when all hold:
+   - same `StreamId`;
+   - positions are consecutive, so continuity was never broken;
+   - the earlier observation carried a failing outcome and the later one a
+     succeeding outcome, by the existing `Feature::quality` reading;
+   - unweighted character edit distance is at most
+     `1 + (len(a) + len(b)) / 10`, the Cucerzan & Brill gate.
+3. Bound it with `Config::max_correction_pairs` (default 4096, tiny preset 32),
+   evicting least-recently-observed. Count its strings in
+   `retained_string_bytes` so the existing byte budget still holds.
+4. Expose `Predictor::corrections()` returning the retained pairs, and include
+   the count in `ModelStats`.
+5. Serialize into the snapshot as a new section; bump `VERSION` to 3 and reject
+   version 2 files rather than silently migrating.
 
----
+### Files
 
-## Phase 3: Bound retained and snapshot bytes
+`src/model/corrections.rs`, `src/model/mod.rs`, `src/api/config.rs`,
+`src/engine/predictor/{observe,maintenance}.rs`, `src/snapshot/*`,
+`tests/predictor_cases/corrections.rs`.
 
-Items/features accept unlimited strings; slot count alone is bounded; observation
-is infallible; snapshot only caps one string at write/read and has no total budget.
-A live model can therefore become unsnapshotable.
+### Gate
 
-Add normalized config limits:
+`make verify`. Tests must cover: a gap between the two positions records nothing;
+a cross-stream pair records nothing; a success following a success records
+nothing; an edit distance above the gate records nothing; the log respects its
+bound; and a snapshot round-trip preserves the log exactly.
 
-| Limit | Default | Tiny |
-|---|---:|---:|
-| `max_string_bytes` | 65,536 | 1,024 |
-| `max_retained_string_bytes` | 67,108,864 | 65,536 |
-| `max_snapshot_bytes` | 134,217,728 | 1,048,576 |
+### STOP
 
-Add typed `InputError`; make predictor/trainer observe and replay return `Result`.
-Validate raw, normalized, and tokenized data before any mutation. Charge every
-owned string, release on eviction/forgetting, expose logical retained bytes in
-stats, and reject without changing clock/stats/predictions/snapshot bytes. Never
-truncate or silently drop data.
-
-Use checked cumulative snapshot reader/writer budgets. Bump format to version 2,
-fingerprint new limits, and explicitly reject version 1. Test oversized raw and
-derived strings, total budgets, transactional rejection, overflow, corrupt data,
-failed-load atomicity, and that every accepted model serializes.
-
-Gates: `make check-all`, `make test`, `make test-minimal`, `make verify`, tiny and
-million benchmarks. STOP if validation cannot precede mutation, v1 migration is
-required, ownership is undefined, or data would be truncated.
-
-Suggested commit: `fix: bound predictor input bytes`
+Do not infer failure from anything except the outcome features the caller
+supplied. If a fixture needs Vista to guess that an item failed, stop.
 
 ---
 
-## Phase 4: Produce valid research exports
+## Phase 3: Iterative repair with safety constraints
 
-SPMF currently emits ID zero, but its documented items are positive integers;
-dictionary TSV is ambiguous for tabs/newlines. Assign IDs from one consistently
-in SPMF/plain/dictionary, preserve `-1`/`-2`, check overflow, and escape `\\`, tab,
-carriage return, and newline deterministically. Update tests/docs.
+### Goal
 
-Gates:
-`make test`; `make research-export HISTORY=tests/fixtures/workflow.txt OUTPUT=target/research-check`; `make verify`.
-Require positive SPMF items, matching dictionary IDs, escaped fields, preserved
-gap/order behavior, and no external dependency.
+The single largest measured win available: 47.2 to 67.2 recall in the reference
+ablation. Today `predict_aligned` repairs once.
 
-Suggested commit: `fix: emit valid SPMF identifiers`
+### Steps
+
+1. In `src/engine/predictor/predict.rs`, loop `predict_aligned` over its own
+   output until the repaired value stops changing or `max_repair_iterations` is
+   reached. Default 3, tiny preset 1.
+2. Iteration 1 may only rewrite tokens absent from the observed vocabulary.
+   Later iterations may rewrite known tokens.
+3. Never rewrite two adjacent known tokens within one iteration.
+4. Track the iteration count on `Prediction` behind the `explanations` feature so
+   the harness can report `mean_iterations`.
+5. Guarantee termination: a repair that revisits any earlier value in the chain
+   ends the loop for that candidate.
+
+### Files
+
+`src/engine/alignment.rs`, `src/engine/predictor/predict.rs`,
+`src/api/config.rs`, `tests/predictor_cases/alignment.rs`.
+
+### Gate
+
+`make verify`, plus phase-1 metrics showing recall above the phase-1 baseline
+with false-positive rate no worse than baseline + 0.02. Add a test asserting a
+two-edit repair that single-pass alignment cannot reach, and a test asserting
+that two adjacent known tokens are never rewritten together.
+
+### STOP
+
+If iteration raises recall but pushes the false-positive rate more than 0.05
+above baseline, stop and report both numbers; do not tune the constraints to hide
+it.
 
 ---
 
-## Phase 5: Report snapshot evaluation failures
+## Phase 4: Noisy-channel repair scoring
 
-Evaluation currently turns snapshot write/read failure into success-looking zero
-metrics. Replace scalars with typed `Success { bytes, load_time }`,
-`Failed { stage, error }`, and `NotMeasured`. Preserve other metrics on failure;
-never include application contents in errors. Test success/write/read/not-measured
-using phase 3 budgets. Print explicit status in the evaluation example.
+### Goal
 
-Gates: `make test`, `make evaluate`, `make verify`. STOP if phase 3 lacks
-deterministic failure or the API permits contradictory success/error state.
+Delete `TYPO_SIMILARITY`, the last authored constant in the repair path, and
+replace the boolean with a probability so ranking can trade a likelier command
+against a larger edit.
 
-Suggested commit: `fix: report snapshot metric failures`
+### Steps
+
+1. Score each repair as
+   `ln P(candidate | history) + channel_weight * ln P(typed | candidate)`.
+   The first term is the existing PPM probability, already computed.
+2. Estimate `P(typed | candidate)` from the phase-2 log: the observed rate at
+   which a token was retyped as another token. Back off, for pairs never seen, to
+   a length-normalized edit distance converted to a log-probability.
+3. Decide misspelling-versus-argument by comparing that probability against the
+   probability of the typed token being intended, rather than against a constant.
+4. Add `Config::channel_weight` (default 1.0) and keep it inside the existing
+   `normalise` clamp.
+5. Abstention becomes a probability floor, not a similarity floor.
+
+### Files
+
+`src/engine/alignment.rs`, `src/engine/ranking.rs`, `src/model/corrections.rs`,
+`src/api/config.rs`.
+
+### Gate
+
+`make verify`. Phase-1 metrics at least matching phase 3 on recall while
+improving precision. `rg TYPO_SIMILARITY src/` returns nothing. A test must show
+a likelier command with a larger edit outranking a rarer command with a smaller
+edit — the case the boolean cannot express.
+
+### STOP
+
+If the channel term cannot beat phase 3 on any weight in `{0.5, 1.0, 2.0}`,
+record the numbers and mark this phase `REJECTED`, keeping phase 3 behaviour.
 
 ---
 
-## Phase 6: Intern PPM context identities
+## Phase 5: Learned substring edit model
 
-PPM clones each context vector into primary, eviction, member, and follower
-indexes while heap estimation omits many clones. Add checked `ContextId(u32)`:
-one map owns each context vector, state is keyed by ID, and eviction/member/
-follower indexes store IDs. Reuse IDs deterministically or test exhaustion.
+### Goal
 
-Serialize logical vectors/state, not transient IDs; rebuild reverse indexes on
-load. Count owned capacities/associations in memory estimates. Add optional
-dependency-free `make bench-memory` using a system RSS tool outside `verify`.
-Record before/after estimate, RSS, snapshot, throughput, and p95 under `target/`.
+Brill & Moore's `a -> b` substring edits estimated from the phase-2 pairs.
 
-Gates: `make test`, tiny/million/memory benchmarks, `make verify`. STOP if IDs
-change probability/order/snapshot semantics, require full-context update scans,
-unsafe instrumentation, or another snapshot format change.
+**The research predicts this is worth about one point.** It exists in the plan so
+the decision is measured rather than assumed. Do not start it before phase 4 is
+`DONE` and do not start it if phase 4 was `REJECTED`.
 
-Suggested commit: `perf: intern PPM context identities`
+### Steps
+
+1. Align each phase-2 pair by single-character minimum edit distance.
+2. For every non-match, add the adjacent edits within a window of 2. Window 3 may
+   be tried once; both reference tables saturate by 3.
+3. Estimate `P(a -> b) = count(a -> b) / count(a)`, bounded by
+   `Config::max_edit_rules`.
+4. Feed it as the `P(typed | candidate)` estimator from phase 4, behind a new
+   `edit-model` feature so the minimal build never links it.
+
+### Gate
+
+`make verify`, plus phase-1 metrics.
+
+### STOP
+
+If it does not beat phase 4 by at least 2 points of recall at equal precision,
+mark `REJECTED`, delete the code, and record the measurement. A one-point gain
+does not justify a new feature flag, a snapshot section, and a training pass.
+
+---
+
+## Phase 6: Symmetric-delete retrieval
+
+### Goal
+
+Cheaper bounded-edit candidate generation than the current 1/2/3-gram index.
+Retrieval speed only; correction quality must not move.
+
+### Steps
+
+1. Add a symmetric-delete index beside `PartialIndex` under `surface-indexes`.
+2. Precompute deletes of retained surfaces to `Config::max_delete_distance`
+   (default 2), and generate deletes of the query at lookup.
+3. Keep the existing index until benchmarks justify removing it.
+
+### Gate
+
+`make verify`, `make bench-million`. Candidate recall unchanged within 0.01,
+p95 prediction latency improved, heap growth within the configured bounds.
+
+### STOP
+
+If the delete index costs more retained bytes than it saves in latency at the
+tiny preset, mark `REJECTED`.
 
 ---
 
 ## Phase 7: Pin and verify musl toolchain
 
-CI floats stable, Nix differs, musl is absent, and size paths hardcode native
-`target/release`. Pin one exact official stable edition-2024 compiler everywhere;
-include rustfmt, Clippy, rust-analyzer where appropriate, and
-`x86_64-unknown-linux-musl`.
+Carried forward, unstarted, and now blocking every gate.
 
-Make release paths target-aware. Add `check-musl` reusing existing targets and
-`size-musl` reporting empty/minimal/increment/full sizes. Add target-specific CI
-coverage/cache and document that consumer dependencies determine final static
-linkage.
+`Cargo.toml` declares `rust-version = "1.97.1"`. The host toolchain is 1.94.0 and
+no `rust-toolchain.toml` exists, so every cargo invocation is refused by the
+manifest gate before compilation. Phases 1–6 were planned but cannot be verified
+by `make verify` until this is fixed.
 
-Gates: `make verify`, `make size`, `make check-musl`, `make size-musl`. STOP if
-the compiler fails current code, musl needs native dependencies, or another
-triple is required without selection.
+### Steps
 
-Suggested commit: `ci: pin and verify musl builds`
+1. Commit a `rust-toolchain.toml` pinning the channel used by the flake, with the
+   `x86_64-unknown-linux-musl` target and `clippy`/`rustfmt`.
+2. Reconcile `rust-version` with the pinned channel; lower it if the pin cannot
+   be raised.
+3. Confirm `make check-musl` and `make size-musl` run.
+
+### Gate
+
+`make verify` runs end to end with no `--ignore-rust-version` override.
 
 ---
 
 ## Phase 8: Simplify Nix development shell
 
-Remove unrelated nixGL/Nvidia/Vulkan/X11/Wayland/ALSA/udev/WGPU/clang/mold setup.
-Keep only the pinned Rust/musl toolchain and packages directly mapped to Makefile
-commands (Git, coreutils/binutils, optional RSS tool, and release tool if used).
-Remove display/Nvidia/impure logic from `.envrc`; keep the flake pure and pinned.
+Carried forward, unstarted. Depends on phase 7.
 
-Gates: `nix flake show`, `nix develop -c make verify`,
-`nix develop -c make check-musl`. STOP if checked-in code truly needs a removed
-native library or the chosen Nix toolchain cannot provide musl.
+Reduce the flake to one toolchain derivation providing the musl target, and drop
+any separate rustc/cargo/rustfmt/clippy inputs that can disagree with it.
 
-Suggested commit: `build: minimize the Nix dev shell`
+### Gate
+
+A clean `nix develop` provides the pinned toolchain and `make verify` passes
+inside it.
 
 ---
 
 ## Phase 9: Run real-corpus quality gate
 
-Remain blocked until the operator supplies sanitized chronological `HISTORY`,
-production config/limits, production normalizer or identity confirmation, a
-predefined recent-regime slice, and confirmation that aggregates are safe.
+**BLOCKED: corpus required.**
 
-Freeze one split/config before evaluation. Compare production variable-order,
-fixed orders 3/1, most frequent, cache-off, identity normalization, and production
-candidate limits. Report top-k, MRR, log-loss/perplexity, recall/coverage,
-normalization, retained bytes/counts, latency, snapshot status/size/load, and
-completion savings. Never tune on the evaluation partition.
+Synthetic fixtures cannot establish that repair helps real users. This phase
+needs a real chronological history with genuine failures and retypings.
 
-Acceptance: top-5 >= fixed-3; log-loss better than frequent/fixed-1;
-normalization improves recall or memory without predeclared material top-5 loss;
-cache improves the predefined recent slice; candidate recall >=99%. A miss needs
-explicit acceptance, not moved thresholds.
+### When unblocked
 
-Gates: `make verify`, `make evaluate HISTORY="$HISTORY"`, optional approved
-research export under `target/`, `make bench-million`, clean Git state. STOP on
-missing/unsafe data, unequal splits, snapshot failure, or unaccepted threshold.
+1. Import the history through the caller-side sanitiser, never committing it.
+2. Report phase-1 metrics for: single-pass repair, iterative repair, and the
+   noisy-channel scorer.
+3. Record top-1 accuracy, precision, false-positive rate, and p95 latency.
 
-Suggested commit for generic evaluator changes: `test: add real corpus release gate`
+### STOP
+
+Do not substitute a public corpus of English prose. The error distribution of
+typed commands is not the error distribution of prose, and the measurement would
+not transfer.
 
 ---
 
 ## Phase 10: Refresh final documentation
 
-Verify phases 1–9 against done criteria, then remeasure on the pinned toolchain.
-Record commit/date/compiler/targets, architecture, 600-LOC gate, stream contract,
-byte limits/API errors, snapshot version, export grammar, native/musl commands,
-sizes, heap/RSS, benchmarks, real aggregates, and accepted deviations. Never copy
-old numbers or promise portable performance.
+Depends on 1–9.
 
-Final commands:
+1. Rewrite the README repair section against measured numbers, replacing every
+   qualitative claim with a metric from phase 1.
+2. Record the ablation Vista actually measured next to the published one, so a
+   future reader can see whether the research transferred.
+3. Refresh the `Audited baseline` table with the pinned toolchain.
+4. Delete this plan's completed phases and leave only open work.
 
-```sh
-make loc-check
-make verify
-make run
-make evaluate
-make evaluate EXAMPLE=tests/fixtures/workflow.txt
-make research-export HISTORY=tests/fixtures/workflow.txt OUTPUT=target/research-check
-make bench-tiny
-make bench-million
-make size
-make size-full
-make check-musl
-make size-musl
-```
+### Gate
 
-Complete only when every command passes, every maintained file is <=600 LOC,
-real thresholds pass or deviations are accepted, docs match measurements, and
-generated/private data is untracked.
-
-Suggested commit: `docs: refresh predictor release record`
-
-## Global STOP conditions
-
-Stop if stream isolation is undecided; byte rejection cannot be transactional;
-snapshot v2 needs unapproved migration; context IDs change semantics; musl needs
-new runtime/native dependencies; real inputs are absent/unsafe; a threshold fails
-without acceptance; `make verify` rewrites tracked files; any maintained file
-exceeds 600 LOC; or work escapes a phase's declared scope.
+`make verify`, and every README snippet compiled — the README is not doctested,
+so each block must be checked by hand or wired into a compiled example.
