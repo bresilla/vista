@@ -185,12 +185,44 @@ know which paths, hosts, branches, identifiers, and secrets are safe to retain
 or replace. Vista retains at most 1,024 normalized slots per surface so a
 normalizer cannot create an unbounded snapshot section.
 
-## Rendered completions
+## Repairing an item from history
 
 `predict` returns surfaces exactly as they were observed, so a predicted shape
-arrives carrying whichever arguments history retained. `predict_rendered` ranks
-templates instead, returns each one once, and refills it from the slots of the
-item being completed:
+arrives carrying whichever arguments history retained. `predict_aligned` instead
+rebuilds each candidate's structure around the arguments of the item you pass
+in, using nothing but the two strings:
+
+```rust
+# use vista::{Config, Item, Predictor, Position, Query, StreamId};
+# let predictor = Predictor::new(Config::default());
+let failed = Item::new("command", "apt install ripgrep");
+let query = Query::new(StreamId(7), Position(4), 3);
+for prediction in predictor.predict_aligned(&query, &failed) {
+    // history holds `sudo apt install fd`, so the repair is
+    // `sudo apt install ripgrep`, never `sudo apt install fd`
+    println!("{}", prediction.item.value);
+}
+```
+
+Tokens shared by both sides are structure, tokens only the candidate carries are
+the repair, and differing tokens are resolved by how much they resemble each
+other: near-identical tokens are one word misspelled, unrelated tokens are your
+arguments. `git chekout feature` against `git checkout main` yields
+`git checkout feature` — the misspelling corrected, the argument kept.
+
+Nothing is configured or authored. There is no normalizer, no template, no rule,
+and no threshold to tune; the split between structure and argument comes out of
+the alignment. Candidates that share no structure repair to the source unchanged
+and are dropped, so alignment is also its own filter and the candidate matcher is
+not applied on this path. `Prediction::template` still identifies which history
+matched, and `Prediction::probability` still orders repairs by what usually
+follows in this stream.
+
+## Rendered completions
+
+When an application does supply a normalizer, `predict_rendered` ranks templates
+instead, returns each one once, and refills it from the slots of the item being
+completed:
 
 ```rust
 # use vista::{Config, Item, Predictor, Position, Query, SimilarityMatcher, StreamId};

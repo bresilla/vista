@@ -15,7 +15,7 @@ use crate::adapters::{PartialIndex, TokenIndex};
 use crate::api::{Config, Item, Observation, Query, StreamId, StreamTable, SurfaceId, TemplateId};
 #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
 use crate::engine::ContextIndex;
-use crate::engine::{Candidates, Prediction, RankInput, rank};
+use crate::engine::{Candidates, Prediction, RankInput, rank, repair};
 #[cfg(any(feature = "recent-cache", feature = "snapshot"))]
 use crate::model::RecentCache;
 #[cfg(feature = "surface-indexes")]

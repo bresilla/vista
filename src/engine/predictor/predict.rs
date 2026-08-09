@@ -1,8 +1,16 @@
 use super::*;
 
+/// How partial input is used once it has driven candidate retrieval.
+enum PartialMode<'a> {
+    /// Consult the candidate matcher, optionally comparing templates.
+    Filtered(Option<&'a Item>),
+    /// Retrieve on the partial but let the caller discriminate.
+    Retrieval,
+}
+
 impl Predictor {
     pub fn predict(&self, query: &Query) -> Vec<Prediction> {
-        self.ranked(query, None, query.limit)
+        self.ranked(query, PartialMode::Filtered(None), query.limit)
     }
 
     /// Ranks predicted templates and refills them with `source`'s own slots.
@@ -24,7 +32,7 @@ impl Predictor {
         let mut seen = BTreeSet::new();
         self.ranked(
             &effective,
-            Some(&normalized.template),
+            PartialMode::Filtered(Some(&normalized.template)),
             self.config.max_candidates,
         )
         .into_iter()
@@ -39,12 +47,43 @@ impl Predictor {
         .collect()
     }
 
-    fn ranked(
-        &self,
-        query: &Query,
-        partial_template: Option<&Item>,
-        limit: usize,
-    ) -> Vec<Prediction> {
+    /// Repairs `source` from the structure of the commands history already
+    /// contains, without templates, slots, or a normalizer.
+    ///
+    /// Each ranked candidate is token-aligned against `source`: shared tokens
+    /// are structure, tokens only the candidate carries are the repair, and
+    /// differing tokens are kept from whichever side they belong to. Results
+    /// that reproduce `source` unchanged are not repairs and are dropped, as
+    /// are duplicates that different candidates repair to the same command.
+    /// `Prediction::template` still identifies the history that matched.
+    pub fn predict_aligned(&self, query: &Query, source: &Item) -> Vec<Prediction> {
+        if query.limit == 0 {
+            return Vec::new();
+        }
+        let mut effective = query.clone();
+        if effective.partial.is_none() {
+            effective.partial = Some(source.value.clone());
+        }
+        let mut seen = BTreeSet::new();
+        self.ranked(
+            &effective,
+            PartialMode::Retrieval,
+            self.config.max_candidates,
+        )
+        .into_iter()
+        .filter_map(|mut prediction| {
+            let repaired = repair(&source.value, &prediction.item.value)?;
+            if repaired == source.value || !seen.insert(repaired.clone()) {
+                return None;
+            }
+            prediction.item = Item::new(prediction.item.namespace.clone(), repaired);
+            Some(prediction)
+        })
+        .take(query.limit)
+        .collect()
+    }
+
+    fn ranked(&self, query: &Query, mode: PartialMode<'_>, limit: usize) -> Vec<Prediction> {
         if limit == 0 || self.dictionary.templates.is_empty() {
             return Vec::new();
         }
@@ -98,17 +137,19 @@ impl Predictor {
             let Some(template) = self.dictionary.template(surface.template) else {
                 continue;
             };
-            let partial = match query.partial.as_deref() {
-                Some(value) => match self.matcher.score_match(MatchInput {
-                    partial: value,
-                    partial_template,
-                    candidate: &surface.item,
-                    candidate_template: &template.item,
-                }) {
-                    Some(score) if score.is_finite() => score,
-                    _ => continue,
-                },
-                None => 0.0,
+            let partial = match (query.partial.as_deref(), &mode) {
+                (Some(value), PartialMode::Filtered(partial_template)) => {
+                    match self.matcher.score_match(MatchInput {
+                        partial: value,
+                        partial_template: *partial_template,
+                        candidate: &surface.item,
+                        candidate_template: &template.item,
+                    }) {
+                        Some(score) if score.is_finite() => score,
+                        _ => continue,
+                    }
+                }
+                _ => 0.0,
             };
             let trace = self.ppm.probability_resolved(
                 &ppm_history,

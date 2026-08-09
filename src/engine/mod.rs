@@ -1,3 +1,4 @@
+mod alignment;
 mod candidates;
 #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
 mod context;
@@ -13,6 +14,7 @@ pub use predictor::{ModelStats, Predictor, PredictorBuilder};
 pub use ranking::Prediction;
 pub use trainer::Trainer;
 
+pub(crate) use alignment::repair;
 pub(crate) use candidates::Candidates;
 #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
 pub(crate) use context::ContextIndex;

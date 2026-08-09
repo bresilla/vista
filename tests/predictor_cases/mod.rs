@@ -1,5 +1,6 @@
 use super::*;
 
+mod alignment;
 mod evaluation;
 mod input;
 mod learning;
