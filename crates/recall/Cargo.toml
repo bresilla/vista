@@ -1,7 +1,7 @@
 [package]
 name = "vista-recall"
 description = "Bounded deterministic prediction and repair from observed history"
-readme = "../README.md"
+readme = "../../README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

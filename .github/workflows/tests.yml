@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.89
         with:
           components: clippy, rust-analyzer, rustfmt
           targets: x86_64-unknown-linux-musl
@@ -23,9 +23,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-rust-1.97.1-native-${{ hashFiles('Cargo.lock') }}
+          key: cargo-${{ runner.os }}-rust-1.89-native-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            cargo-${{ runner.os }}-rust-1.97.1-native-
+            cargo-${{ runner.os }}-rust-1.89-native-
       - name: Verify
         run: make verify
 
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.89
         with:
           targets: x86_64-unknown-linux-musl
       - uses: actions/cache@v4
@@ -42,9 +42,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target/x86_64-unknown-linux-musl
-          key: cargo-${{ runner.os }}-rust-1.97.1-musl-${{ hashFiles('Cargo.lock') }}
+          key: cargo-${{ runner.os }}-rust-1.89-musl-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            cargo-${{ runner.os }}-rust-1.97.1-musl-
+            cargo-${{ runner.os }}-rust-1.89-musl-
       - name: Check musl
         run: make check-musl
       - name: Measure musl

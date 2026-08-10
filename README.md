@@ -77,7 +77,7 @@ add back `recent-cache`, `snapshot`, `explanations`, `surface-indexes`,
 `evaluation`, or `research` as needed.
 
 ```toml
-vista-recall = { path = "../vista/recall", default-features = false }
+vista-recall = { path = "../vista/crates/recall", default-features = false }
 ```
 
 ## Commands
