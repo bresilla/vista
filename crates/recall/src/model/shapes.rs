@@ -80,10 +80,6 @@ impl ShapeIndex {
         }
     }
 
-    pub(crate) fn len(&self) -> usize {
-        self.shapes.len()
-    }
-
     pub(crate) fn clear(&mut self) {
         self.items.clear();
         self.shapes.clear();
@@ -139,7 +135,6 @@ mod tests {
         assert_eq!(index.matching("www").count(), 1);
         index.remove_surface(SurfaceId(1));
         assert_eq!(index.matching("www").count(), 0);
-        assert_eq!(index.len(), 0);
     }
 
     #[test]
@@ -148,6 +143,6 @@ mod tests {
         for id in 0..6 {
             index.learn("git checkout main", SurfaceId(id));
         }
-        assert!(index.len() <= 2);
+        assert!(index.matching("www").count() <= 2);
     }
 }

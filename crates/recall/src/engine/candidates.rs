@@ -7,9 +7,9 @@ use crate::adapters::TokenIndex;
 use crate::api::{Query, SurfaceId, TemplateId};
 #[cfg(feature = "recent-cache")]
 use crate::model::RecentCache;
+use crate::model::{Dictionary, Ppm, PpmHistory};
 #[cfg(feature = "surface-indexes")]
 use crate::model::{ShapeIndex, distance_within, shape};
-use crate::model::{Dictionary, Ppm, PpmHistory};
 
 /// Structural matches sit beside literal ones rather than displacing them.
 #[cfg(feature = "surface-indexes")]

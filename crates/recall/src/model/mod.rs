@@ -3,6 +3,7 @@ mod cache;
 mod corrections;
 mod dictionary;
 mod ppm;
+#[cfg(feature = "surface-indexes")]
 mod shapes;
 mod statistics;
 

@@ -19,10 +19,10 @@ use crate::engine::{Candidates, Channel, Prediction, RankInput, rank, repair};
 #[cfg(any(feature = "recent-cache", feature = "snapshot"))]
 use crate::model::RecentCache;
 #[cfg(feature = "surface-indexes")]
+use crate::model::ShapeIndex;
+#[cfg(feature = "surface-indexes")]
 use crate::model::context_ratio;
 use crate::model::{CorrectionLog, CorrectionPair, Dictionary, Ppm, surface_ratio};
-#[cfg(feature = "surface-indexes")]
-use crate::model::ShapeIndex;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ModelStats {
