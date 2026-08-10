@@ -308,6 +308,7 @@ impl Predictor {
         self.ppm.learn(&history, admission.template, self.clock);
         #[cfg(feature = "surface-indexes")]
         {
+            self.shapes.learn(&observation.item.value, admission.surface);
             self.context
                 .learn_keys(prepared.context_keys, admission.surface);
             self.tokens

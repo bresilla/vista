@@ -113,3 +113,25 @@ typed:  hexe mux float --hlp
 Keep the corpora in separate `Predictor` instances. A reference predictor must
 never answer `predict`, or 29,000 commands the caller has never run become
 suggestions. See `crates/recall/examples/reference.rs`.
+
+## Measured: structural retrieval
+
+Repair works by structural analogy, not word lookup. `crane index filter --help`
+fixes `hexe mux float --hlp` because the two are arranged alike, sharing no
+vocabulary at all.
+
+Retrieval was the whole bottleneck: of the repairs that failed, 87.5% failed
+because the correct word never reached a candidate, while alignment and ranking
+together failed 0.3%. Two obvious fixes both lost to the baseline — near
+spellings alone evict the structurally similar candidates composition needs,
+and shape alone returns 22,000 candidates. Their intersection is narrow, 18
+candidates on average, and reaches 44% of the corrections.
+
+| Repairing from | before | after |
+|---|---:|---:|
+| all failures | 0.137 | **0.206** |
+| item run before | 0.184 | **0.398** |
+| item never run before | 0.118 | **0.131** |
+
+Prediction is unaffected: structural retrieval runs only on the repair path,
+and top-1 and latency are unchanged.

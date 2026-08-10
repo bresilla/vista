@@ -3,6 +3,7 @@ mod cache;
 mod corrections;
 mod dictionary;
 mod ppm;
+mod shapes;
 mod statistics;
 
 #[cfg(any(feature = "recent-cache", feature = "snapshot"))]
@@ -15,6 +16,8 @@ pub(crate) use dictionary::{SurfaceRecord, TemplateRecord};
 #[cfg(feature = "snapshot")]
 pub(crate) use ppm::{ContextState, FollowerState};
 pub(crate) use ppm::{Ppm, PpmHistory};
+#[cfg(feature = "surface-indexes")]
+pub(crate) use shapes::{ShapeIndex, distance_within, shape};
 #[cfg(feature = "surface-indexes")]
 pub(crate) use statistics::context_ratio;
 pub(crate) use statistics::surface_ratio;
