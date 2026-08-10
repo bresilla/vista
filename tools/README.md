@@ -85,3 +85,31 @@ tools/tldr-pairs.sh ~/.cache/tealdeer/tldr-pages/pages.en common
 Pages are CC-BY-4.0 from the tldr-pages project. Anything shipped from this
 output must carry that attribution. The extract is not committed here; it is
 regenerated from whatever cache the user already has.
+
+## Measured: reference repair
+
+Skeletons make a usable repair corpus. Held-out test on a real 308,000-command
+history: train on the first two thirds, then damage one character in 3,000
+commands the personal model had **never seen**.
+
+| Repairing from | Recovered |
+|---|---:|
+| personal history alone | 0.010 |
+| **tldr skeletons alone** | **0.106** |
+| either | 0.114 |
+
+Only 0.03% of those targets appear in tldr at all, so the gain is not retrieval.
+Repair composes: the reference supplies a correct spelling and the caller's own
+arguments survive, producing commands present in neither corpus.
+
+```
+typed:  hexe mux float --hlp
+  ->    hexe mux float --help
+  via:  crane index filter --help
+```
+
+`hexe` is not documented anywhere; an unrelated page supplied `--help`.
+
+Keep the corpora in separate `Predictor` instances. A reference predictor must
+never answer `predict`, or 29,000 commands the caller has never run become
+suggestions. See `crates/recall/examples/reference.rs`.
