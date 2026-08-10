@@ -304,6 +304,31 @@ result:      sudo apt install ripgrep
 - **Only in the candidate** — that is the repair (`sudo`).
 - **Differing** — decided by the channel, below.
 
+### Structural retrieval
+
+Alignment can only work with the candidates it is given, so repair retrieves
+differently from prediction. Alongside the literal and fragment matches it asks
+for items *arranged* like the broken one: same token count, same positional
+classes, and a near spelling wherever the broken item holds a token history does
+not recognise.
+
+```
+hexe mux float --hlp        wwwf, unrecognised token at position 3
+crane index filter --help   wwwf, one edit away at position 3
+```
+
+Those two share no vocabulary at all. The candidate supplies a spelling, the
+caller's own words survive, and the repair belongs to neither item.
+
+Both halves are necessary and neither is sufficient. Near spellings on their own
+evict the arrangements alignment depends on and make repair worse; shape on its
+own matches tens of thousands of items and discriminates nothing. Together they
+select roughly eighteen candidates.
+
+`ShapeIndex` holds this grouping. It is derived from retained surfaces, so a
+snapshot rebuilds it on load rather than storing it, and it is consulted only by
+`predict_aligned` — prediction accuracy and latency are unchanged.
+
 ### The channel
 
 Differing tokens are a noisy-channel decision: the probability that the token
