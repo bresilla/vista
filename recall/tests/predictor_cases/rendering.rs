@@ -1,6 +1,6 @@
 use super::*;
 
-use vista::{MatchInput, SimilarityMatcher};
+use vista_recall::{MatchInput, SimilarityMatcher};
 
 #[derive(Clone, Copy)]
 struct PackageNormalizer;

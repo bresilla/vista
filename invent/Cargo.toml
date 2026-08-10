@@ -1,0 +1,20 @@
+[package]
+name = "vista-invent"
+description = "Semantic candidate retrieval for repairing items"
+readme = "../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "vista_invent"
+path = "src/lib.rs"
+
+[features]
+default = []
+
+[dependencies]
+
+[dev-dependencies]

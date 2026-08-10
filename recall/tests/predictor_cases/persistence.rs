@@ -27,7 +27,7 @@ fn empty_snapshot_round_trip_is_valid() {
         Config::default(),
         IdentityNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         bytes.as_slice(),
     )
     .unwrap();
@@ -52,7 +52,7 @@ fn snapshot_round_trip_restores_and_continues_learning() {
         Config::default(),
         IdentityNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         Cursor::new(bytes),
     )
     .unwrap();
@@ -90,7 +90,7 @@ fn pruned_probability_mass_survives_snapshot() {
         config,
         IdentityNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         Cursor::new(bytes),
     )
     .unwrap();
@@ -111,7 +111,7 @@ fn corrupt_truncated_and_trailing_snapshots_are_rejected() {
             Config::default(),
             IdentityNormalizer,
             WhitespaceTokenizer,
-            vista::ContainsMatcher,
+            vista_recall::ContainsMatcher,
             Cursor::new(bytes),
         )
     };
@@ -145,7 +145,7 @@ fn failed_snapshot_load_leaves_existing_predictor_unchanged() {
         Config::default(),
         IdentityNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         Cursor::new(b"not a snapshot"),
     );
     assert!(failed.is_err());
@@ -166,7 +166,7 @@ fn unsupported_and_oversized_snapshots_are_rejected() {
             Config::default(),
             IdentityNormalizer,
             WhitespaceTokenizer,
-            vista::ContainsMatcher,
+            vista_recall::ContainsMatcher,
             Cursor::new(bytes),
         )
     };
@@ -200,7 +200,7 @@ fn overflowing_snapshot_limits_are_rejected() {
         config,
         IdentityNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         bytes.as_slice(),
     );
     assert!(restored.is_err());
@@ -222,7 +222,7 @@ fn duplicate_and_dangling_snapshot_identifiers_are_rejected() {
             Config::default(),
             IdentityNormalizer,
             WhitespaceTokenizer,
-            vista::ContainsMatcher,
+            vista_recall::ContainsMatcher,
             bytes.as_slice(),
         )
     };
@@ -249,7 +249,7 @@ fn incompatible_snapshot_configuration_is_rejected() {
         },
         IdentityNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         Cursor::new(bytes),
     );
     assert!(error.is_err());
@@ -322,10 +322,10 @@ fn snapshot_revalidates_normalizer_output_even_when_keys_match() {
             config,
             SameKeyNormalizer("changed"),
             WhitespaceTokenizer,
-            vista::ContainsMatcher,
+            vista_recall::ContainsMatcher,
             bytes.as_slice(),
         ),
-        Err(vista::SnapshotError::IncompatibleConfig)
+        Err(vista_recall::SnapshotError::IncompatibleConfig)
     ));
 }
 
@@ -352,7 +352,7 @@ fn excessive_normalized_slots_are_rejected_without_mutation() {
     let before = predictor.stats();
     assert!(matches!(
         predictor.observe(observation(1, 1, "surface")),
-        Err(vista::InputError::TooManySlots { limit: 1_024, .. })
+        Err(vista_recall::InputError::TooManySlots { limit: 1_024, .. })
     ));
     assert_eq!(predictor.stats(), before);
 }

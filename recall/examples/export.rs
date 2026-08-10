@@ -1,7 +1,7 @@
 use std::io::BufRead;
 use std::path::Path;
 
-use vista::{Item, Observation, Position, ResearchExport, StreamId};
+use vista_recall::{Item, Observation, Position, ResearchExport, StreamId};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let history = std::env::args().nth(1).expect("history path");

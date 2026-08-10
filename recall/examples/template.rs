@@ -1,4 +1,4 @@
-use vista::{
+use vista_recall::{
     Config, Feature, Item, NormalizedItem, Normalizer, Observation, Position, Predictor, Query,
     StreamId,
 };

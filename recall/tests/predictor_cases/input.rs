@@ -20,7 +20,7 @@ fn oversized_raw_input_is_rejected_transactionally() {
 
     assert!(matches!(
         predictor.observe(observation(1, 2, "too-long-value")),
-        Err(vista::InputError::StringTooLong {
+        Err(vista_recall::InputError::StringTooLong {
             field: "raw item",
             ..
         })
@@ -62,7 +62,7 @@ fn oversized_normalizer_tokenizer_and_context_outputs_are_rejected() {
         .build();
     assert!(matches!(
         normalized.observe(observation(1, 1, "raw")),
-        Err(vista::InputError::StringTooLong {
+        Err(vista_recall::InputError::StringTooLong {
             field: "normalized template",
             ..
         })
@@ -73,7 +73,7 @@ fn oversized_normalizer_tokenizer_and_context_outputs_are_rejected() {
         .build();
     assert!(matches!(
         tokenized.observe(observation(1, 1, "raw")),
-        Err(vista::InputError::StringTooLong { field: "token", .. })
+        Err(vista_recall::InputError::StringTooLong { field: "token", .. })
     ));
 
     let mut contextual = Predictor::new(config);
@@ -81,7 +81,7 @@ fn oversized_normalizer_tokenizer_and_context_outputs_are_rejected() {
     event.context.push(Feature::categorical("aaaaa", "bbbbb"));
     assert!(matches!(
         contextual.observe(event),
-        Err(vista::InputError::StringTooLong {
+        Err(vista_recall::InputError::StringTooLong {
             field: "context key",
             ..
         })
@@ -97,9 +97,9 @@ fn retained_string_budget_rejects_without_mutation() {
     let mut predictor = Predictor::new(config);
     assert!(matches!(
         predictor.observe(observation(1, 1, "a")),
-        Err(vista::InputError::RetainedStringBytesExceeded { limit: 1, .. })
+        Err(vista_recall::InputError::RetainedStringBytesExceeded { limit: 1, .. })
     ));
-    assert_eq!(predictor.stats(), vista::ModelStats::default());
+    assert_eq!(predictor.stats(), vista_recall::ModelStats::default());
 }
 
 #[test]
@@ -158,10 +158,10 @@ fn snapshot_version_one_and_total_overflow_are_rejected() {
             Config::default(),
             IdentityNormalizer,
             WhitespaceTokenizer,
-            vista::ContainsMatcher,
+            vista_recall::ContainsMatcher,
             bytes.as_slice(),
         ),
-        Err(vista::SnapshotError::UnsupportedVersion(1))
+        Err(vista_recall::SnapshotError::UnsupportedVersion(1))
     ));
 
     let tiny_snapshot = Config {
@@ -171,6 +171,6 @@ fn snapshot_version_one_and_total_overflow_are_rejected() {
     let predictor = Predictor::new(tiny_snapshot);
     assert!(matches!(
         predictor.write_snapshot(Vec::new()),
-        Err(vista::SnapshotError::LimitExceeded("total bytes"))
+        Err(vista_recall::SnapshotError::LimitExceeded("total bytes"))
     ));
 }

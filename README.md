@@ -28,7 +28,7 @@ actually typed before.
 ## Use
 
 ```rust
-use vista::{Config, Item, Observation, Position, Predictor, Query, StreamId};
+use vista_recall::{Config, Item, Observation, Position, Predictor, Query, StreamId};
 
 fn event(position: u64, value: &str) -> Observation {
     Observation {
@@ -77,7 +77,7 @@ add back `recent-cache`, `snapshot`, `explanations`, `surface-indexes`,
 `evaluation`, or `research` as needed.
 
 ```toml
-vista = { path = "../vista", default-features = false }
+vista-recall = { path = "../vista/recall", default-features = false }
 ```
 
 ## Commands

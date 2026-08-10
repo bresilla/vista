@@ -234,7 +234,7 @@ fn forgotten_surfaces_cannot_be_recovered_from_snapshots() {
         Config::default(),
         IdentityNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         bytes.as_slice(),
     )
     .unwrap();
@@ -283,7 +283,7 @@ fn every_collection_respects_configured_bounds() {
             config,
             IdentityNormalizer,
             WhitespaceTokenizer,
-            vista::ContainsMatcher,
+            vista_recall::ContainsMatcher,
             snapshot.as_slice(),
         )
         .is_ok()

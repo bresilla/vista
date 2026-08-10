@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use vista::{Config, Item, Observation, Position, Predictor, Query, StreamId, Trainer};
+use vista_recall::{Config, Item, Observation, Position, Predictor, Query, StreamId, Trainer};
 
 fn observation(position: u64) -> Observation {
     let phase = (position / 50_000) % 4;
@@ -57,9 +57,9 @@ fn main() {
     let load_started = Instant::now();
     let restored = Predictor::read_snapshot(
         config,
-        vista::IdentityNormalizer,
-        vista::WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::IdentityNormalizer,
+        vista_recall::WhitespaceTokenizer,
+        vista_recall::ContainsMatcher,
         snapshot.as_slice(),
     )
     .unwrap();

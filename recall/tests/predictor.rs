@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use vista::{
+use vista_recall::{
     Baseline, CandidateMatcher, Config, ContainsMatcher, Evaluation, Feature, IdentityNormalizer,
     Item, NormalizedItem, Normalizer, Observation, Position, Predictor, Query, ResearchExport,
     StreamId, Tokenizer, Trainer, WhitespaceTokenizer,
@@ -27,7 +27,7 @@ fn query(stream: u64, position: u64, limit: usize) -> Query {
     Query::new(StreamId(stream), Position(position), limit)
 }
 
-fn values(predictions: &[vista::Prediction]) -> Vec<&str> {
+fn values(predictions: &[vista_recall::Prediction]) -> Vec<&str> {
     predictions
         .iter()
         .map(|prediction| prediction.item.value.as_str())

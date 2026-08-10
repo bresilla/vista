@@ -40,7 +40,7 @@ A namespaced string. The namespace separates incompatible kinds so that
 `action / deploy` and `sentence / deploy` never collide.
 
 ```rust
-use vista::Item;
+use vista_recall::Item;
 let item = Item::new("command", "cargo build --release");
 ```
 
@@ -74,7 +74,7 @@ is treated as opaque context.
 One completed, learnable event.
 
 ```rust
-use vista::{Feature, Item, Observation, Position, StreamId};
+use vista_recall::{Feature, Item, Observation, Position, StreamId};
 let observation = Observation {
     item: Item::new("command", "cargo build --release"),
     stream: StreamId(7),
@@ -105,11 +105,11 @@ frequency, and recency alone.
 Ingestion is fallible. `observe` and `replay` return `Result<(), InputError>`.
 
 ```rust
-# use vista::{Config, Predictor, Observation};
+# use vista_recall::{Config, Predictor, Observation};
 # let mut predictor = Predictor::new(Config::default());
 # let observations: Vec<Observation> = vec![];
 predictor.replay(observations)?;
-# Ok::<(), vista::InputError>(())
+# Ok::<(), vista_recall::InputError>(())
 ```
 
 Vista validates the raw item, normalizer output, slot count, features, tokens,
@@ -163,7 +163,7 @@ defaults work with zero configuration. Supply them through
 Maps a raw item to a reusable template plus slots, and back again.
 
 ```rust
-# use vista::{Feature, Item, NormalizedItem, Normalizer};
+# use vista_recall::{Feature, Item, NormalizedItem, Normalizer};
 struct Commands;
 
 impl Normalizer for Commands {
@@ -271,7 +271,7 @@ Ties break by item identity, so identical inputs give identical output.
 No normalizer, no templates, no rules, no threshold.
 
 ```rust
-# use vista::{Config, Item, Position, Predictor, Query, StreamId};
+# use vista_recall::{Config, Item, Position, Predictor, Query, StreamId};
 # let predictor = Predictor::new(Config::default());
 let failed = Item::new("command", "apt install ripgrep");
 let query = Query::new(StreamId(7), Position(4), 3);
@@ -336,7 +336,7 @@ followed in the same stream by a similar successful one is recorded as a
 `CorrectionPair`. Similarity is gated at one point change per five characters.
 
 ```rust
-# use vista::{Config, Predictor};
+# use vista_recall::{Config, Predictor};
 # let predictor = Predictor::new(Config::default());
 for (pair, count) in predictor.corrections() {
     println!("{} -> {} ({count}x)", pair.typed.value, pair.corrected.value);
@@ -398,7 +398,7 @@ Requires the `snapshot` feature.
 
 ```rust
 # use std::io::Cursor;
-# use vista::{Config, ContainsMatcher, IdentityNormalizer, Predictor, WhitespaceTokenizer};
+# use vista_recall::{Config, ContainsMatcher, IdentityNormalizer, Predictor, WhitespaceTokenizer};
 # let predictor = Predictor::new(Config::default());
 let mut bytes = Vec::new();
 predictor.write_snapshot(&mut bytes)?;
@@ -411,7 +411,7 @@ let restored = Predictor::read_snapshot(
     Cursor::new(bytes),
 )?;
 # let _ = restored;
-# Ok::<(), vista::SnapshotError>(())
+# Ok::<(), vista_recall::SnapshotError>(())
 ```
 
 Loading is linear in retained structures, not in source history lines, so a

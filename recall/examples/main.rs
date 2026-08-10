@@ -1,4 +1,4 @@
-use vista::{Config, Item, Observation, Position, Predictor, Query, StreamId};
+use vista_recall::{Config, Item, Observation, Position, Predictor, Query, StreamId};
 
 fn observation(value: &str, position: u64) -> Observation {
     Observation {

@@ -1,4 +1,4 @@
-use vista::{Config, Item, Observation, Position, Predictor, StreamId};
+use vista_recall::{Config, Item, Observation, Position, Predictor, StreamId};
 
 fn main() {
     let mut predictor = Predictor::new(Config::tiny());

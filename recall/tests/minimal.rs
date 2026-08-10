@@ -1,4 +1,4 @@
-use vista::{Config, Item, Observation, Position, Predictor, Query, StreamId};
+use vista_recall::{Config, Item, Observation, Position, Predictor, Query, StreamId};
 
 fn observation(position: u64, value: &str) -> Observation {
     Observation {
@@ -37,7 +37,7 @@ fn sequence_only_core_learns_with_tiny_bounds() {
 fn snapshot_only_build_round_trips_sequence_state() {
     use std::io::Cursor;
 
-    use vista::{ContainsMatcher, IdentityNormalizer, WhitespaceTokenizer};
+    use vista_recall::{ContainsMatcher, IdentityNormalizer, WhitespaceTokenizer};
 
     let predictor = trained();
     let query = Query::new(StreamId(1), Position(4), 3);

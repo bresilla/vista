@@ -1,45 +1,13 @@
-[package]
-name = "vista"
+[workspace]
+resolver = "3"
+members = ["recall", "invent"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.97.1"
-description = "Bounded online prediction of previously observed sentences and commands"
+rust-version = "1.89"
 license = "MIT"
-readme = "README.md"
 publish = false
-
-[lib]
-path = "src/lib.rs"
-
-[features]
-default = ["explanations", "recent-cache", "snapshot", "surface-indexes"]
-evaluation = ["snapshot"]
-explanations = []
-recent-cache = []
-research = []
-snapshot = []
-surface-indexes = []
-
-[dependencies]
-
-[dev-dependencies]
-
-[[example]]
-name = "evaluate"
-required-features = ["evaluation"]
-
-[[example]]
-name = "export"
-required-features = ["research"]
-
-[[example]]
-name = "million"
-required-features = ["snapshot"]
-
-[[test]]
-name = "predictor"
-path = "tests/predictor.rs"
-required-features = ["evaluation", "research"]
 
 [profile.release]
 opt-level = "z"

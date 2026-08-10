@@ -3,5 +3,9 @@
 version = 4
 
 [[package]]
-name = "vista"
+name = "vista-invent"
+version = "0.1.0"
+
+[[package]]
+name = "vista-recall"
 version = "0.1.0"

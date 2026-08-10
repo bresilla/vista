@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use vista::{Config, Item, Observation, Position, Predictor, Query, StreamId};
+use vista_recall::{Config, Item, Observation, Position, Predictor, Query, StreamId};
 
 fn observation(position: u64, value: &str) -> Observation {
     Observation {

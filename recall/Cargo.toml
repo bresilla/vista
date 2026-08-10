@@ -1,0 +1,43 @@
+[package]
+name = "vista-recall"
+description = "Bounded deterministic prediction and repair from observed history"
+readme = "../README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "vista_recall"
+path = "src/lib.rs"
+
+[features]
+default = ["explanations", "recent-cache", "snapshot", "surface-indexes"]
+evaluation = ["snapshot"]
+explanations = []
+recent-cache = []
+research = []
+snapshot = []
+surface-indexes = []
+
+[dependencies]
+
+[dev-dependencies]
+
+[[example]]
+name = "evaluate"
+required-features = ["evaluation"]
+
+[[example]]
+name = "export"
+required-features = ["research"]
+
+[[example]]
+name = "million"
+required-features = ["snapshot"]
+
+[[test]]
+name = "predictor"
+path = "tests/predictor.rs"
+required-features = ["evaluation", "research"]

@@ -8,6 +8,7 @@ endif
 
 TOP_DIR := $(CURDIR)
 CARGO := cargo
+PKG := -p vista-recall
 EXAMPLE ?= main
 PREFIX ?= $(HOME)/.local
 HISTORY ?=
@@ -29,7 +30,7 @@ $(info ------------------------------------------)
 .PHONY: build b compile c run r evaluate research-export bench-million bench-memory bench-tiny size size-full size-check check-musl size-musl loc-check test test-minimal t check check-minimal check-all test-all clippy rustdoc fmt fmt-check clean verify release help h
 
 build:
-	@$(CARGO) build --lib
+	@$(CARGO) build $(PKG) --lib
 
 b: build
 
@@ -40,39 +41,39 @@ compile:
 c: compile
 
 run:
-	@$(CARGO) run --example $(EXAMPLE)
+	@$(CARGO) run $(PKG) --example $(EXAMPLE)
 
 r: run
 
 evaluate:
-	@$(CARGO) run --release --features evaluation --example evaluate $(if $(HISTORY),-- $(HISTORY),$(if $(filter-out main,$(EXAMPLE)),-- $(EXAMPLE),))
+	@$(CARGO) run $(PKG) --release --features evaluation --example evaluate $(if $(HISTORY),-- $(HISTORY),$(if $(filter-out main,$(EXAMPLE)),-- $(EXAMPLE),))
 
 research-export:
 	@if [ -z "$(HISTORY)" ]; then echo "HISTORY=/path is required"; exit 1; fi
-	@$(CARGO) run --release --features research --example export -- "$(HISTORY)" "$(OUTPUT)"
+	@$(CARGO) run $(PKG) --release --features research --example export -- "$(HISTORY)" "$(OUTPUT)"
 
 bench-million:
-	@$(CARGO) run --release --features snapshot --example million
+	@$(CARGO) run $(PKG) --release --features snapshot --example million
 
 bench-memory:
 	@if [ -z "$(TIME)" ]; then echo "GNU time is required"; exit 1; fi
 	@mkdir -p "$(CARGO_TARGET_DIR)"
-	@$(CARGO) build --release --features snapshot --example million
+	@$(CARGO) build $(PKG) --release --features snapshot --example million
 	@"$(TIME)" -v "$(EXAMPLES_DIR)/million" > "$(CARGO_TARGET_DIR)/bench-memory.txt" 2>&1
 	@cat "$(CARGO_TARGET_DIR)/bench-memory.txt"
 
 bench-tiny:
-	@$(CARGO) run --release --no-default-features --example tiny
+	@$(CARGO) run $(PKG) --release --no-default-features --example tiny
 
 size:
-	@$(CARGO) build --release --no-default-features --example empty --example embedded
+	@$(CARGO) build $(PKG) --release --no-default-features --example empty --example embedded
 	@stat -c 'empty_rust_bytes=%s' "$(EXAMPLES_DIR)/empty"
 	@stat -c 'embedded_example_bytes=%s' "$(EXAMPLES_DIR)/embedded"
 	@empty=$$(stat -c %s "$(EXAMPLES_DIR)/empty"); embedded=$$(stat -c %s "$(EXAMPLES_DIR)/embedded"); echo "vista_incremental_bytes=$$((embedded - empty))"
 	@size "$(EXAMPLES_DIR)/embedded"
 
 size-full:
-	@$(CARGO) build --release --all-features --example embedded
+	@$(CARGO) build $(PKG) --release --all-features --example embedded
 	@stat -c 'full_embedded_example_bytes=%s' "$(EXAMPLES_DIR)/embedded"
 	@size "$(EXAMPLES_DIR)/embedded"
 
@@ -96,25 +97,25 @@ loc-check:
 	done < <(git ls-files -co --exclude-standard -z); exit $$failed
 
 test:
-	@$(CARGO) test --all-targets --all-features
+	@$(CARGO) test $(PKG) --all-targets --all-features
 
 test-minimal:
-	@$(CARGO) test --no-default-features --lib --test minimal
-	@$(CARGO) test --no-default-features --features snapshot --lib --test minimal
+	@$(CARGO) test $(PKG) --no-default-features --lib --test minimal
+	@$(CARGO) test $(PKG) --no-default-features --features snapshot --lib --test minimal
 
 t: test
 
 check:
-	@$(CARGO) check --lib --bins --examples
+	@$(CARGO) check $(PKG) --lib --bins --examples
 
 check-minimal:
-	@$(CARGO) check --lib --no-default-features
-	@$(CARGO) check --lib --no-default-features --features recent-cache
-	@$(CARGO) check --lib --no-default-features --features snapshot
-	@$(CARGO) check --lib --no-default-features --features surface-indexes
+	@$(CARGO) check $(PKG) --lib --no-default-features
+	@$(CARGO) check $(PKG) --lib --no-default-features --features recent-cache
+	@$(CARGO) check $(PKG) --lib --no-default-features --features snapshot
+	@$(CARGO) check $(PKG) --lib --no-default-features --features surface-indexes
 
 check-all:
-	@$(CARGO) check --all-targets --all-features
+	@$(CARGO) check $(PKG) --all-targets --all-features
 
 fmt:
 	@$(CARGO) fmt --all
@@ -123,15 +124,15 @@ fmt-check:
 	@$(CARGO) fmt --all -- --check
 
 clippy:
-	@$(CARGO) clippy --lib --no-default-features -- -D warnings
-	@$(CARGO) clippy --lib --no-default-features --features snapshot -- -D warnings
-	@$(CARGO) clippy --all-targets --all-features -- -D warnings
+	@$(CARGO) clippy $(PKG) --lib --no-default-features -- -D warnings
+	@$(CARGO) clippy $(PKG) --lib --no-default-features --features snapshot -- -D warnings
+	@$(CARGO) clippy $(PKG) --all-targets --all-features -- -D warnings
 
 rustdoc:
 	@RUSTDOCFLAGS="-Dwarnings" $(CARGO) doc --all-features --no-deps
 
 test-all:
-	@$(CARGO) test --all-targets --all-features
+	@$(CARGO) test $(PKG) --all-targets --all-features
 
 clean:
 	@$(CARGO) clean

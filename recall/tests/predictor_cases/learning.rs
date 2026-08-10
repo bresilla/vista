@@ -164,7 +164,7 @@ fn template_eviction_invalidates_the_pending_history() {
         config,
         IdentityNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         snapshot.as_slice(),
     )
     .unwrap();
@@ -285,7 +285,7 @@ fn unicode_empty_and_duplicate_slots_are_deterministic() {
         Config::default(),
         UnicodeSlotNormalizer,
         WhitespaceTokenizer,
-        vista::ContainsMatcher,
+        vista_recall::ContainsMatcher,
         first_bytes.as_slice(),
     )
     .unwrap();
@@ -321,7 +321,7 @@ fn surface_eviction_keeps_its_shared_template_valid() {
             config,
             ShellNormalizer,
             WhitespaceTokenizer,
-            vista::ContainsMatcher,
+            vista_recall::ContainsMatcher,
             snapshot.as_slice(),
         )
         .is_ok()

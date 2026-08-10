@@ -1,6 +1,6 @@
 use super::*;
 
-use vista::{CorrectionAttempt, CorrectionEvaluation, CorrectionMetrics};
+use vista_recall::{CorrectionAttempt, CorrectionEvaluation, CorrectionMetrics};
 
 const COMMANDS: [&str; 10] = [
     "cargo build --release",

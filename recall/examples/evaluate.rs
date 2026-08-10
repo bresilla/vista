@@ -1,6 +1,6 @@
 use std::io::BufRead;
 
-use vista::{
+use vista_recall::{
     Baseline, Config, Evaluation, Item, Observation, Position, SnapshotMeasurement, StreamId,
 };
 

@@ -85,15 +85,15 @@ fn evaluation_compares_template_normalization_with_identity() {
     assert!(report.variable_order.estimated_heap_bytes < identity.estimated_heap_bytes);
     assert!(matches!(
         &report.variable_order.snapshot,
-        vista::SnapshotMeasurement::Success { bytes, .. } if *bytes > 0
+        vista_recall::SnapshotMeasurement::Success { bytes, .. } if *bytes > 0
     ));
     assert!(matches!(
         &identity.snapshot,
-        vista::SnapshotMeasurement::Success { bytes, .. } if *bytes > 0
+        vista_recall::SnapshotMeasurement::Success { bytes, .. } if *bytes > 0
     ));
     assert!(matches!(
         &report.baselines[&Baseline::FixedOrder1].snapshot,
-        vista::SnapshotMeasurement::NotMeasured
+        vista_recall::SnapshotMeasurement::NotMeasured
     ));
 }
 
@@ -108,8 +108,8 @@ fn evaluation_reports_snapshot_write_failure() {
     );
     assert!(matches!(
         &report.variable_order.snapshot,
-        vista::SnapshotMeasurement::Failed {
-            stage: vista::SnapshotStage::Write,
+        vista_recall::SnapshotMeasurement::Failed {
+            stage: vista_recall::SnapshotStage::Write,
             ..
         }
     ));
@@ -145,8 +145,8 @@ fn evaluation_reports_snapshot_read_failure() {
     );
     assert!(matches!(
         &report.variable_order.snapshot,
-        vista::SnapshotMeasurement::Failed {
-            stage: vista::SnapshotStage::Read,
+        vista_recall::SnapshotMeasurement::Failed {
+            stage: vista_recall::SnapshotStage::Read,
             ..
         }
     ));
