@@ -68,3 +68,20 @@ make optimized
 External research repositories are intentionally not dependencies or CI jobs.
 Report top-k accuracy and log-loss only when every tool uses the identical
 chronological split and normalized dictionary. Never compare shuffled results.
+
+# tldr page extraction
+
+`tldr-pairs.sh` reads a local tealdeer/tldr page cache and emits tab-separated
+`description<TAB>command` lines. Commands keep their `{{slot}}` placeholders,
+which already match the template form a `Normalizer` produces, and each carries
+a natural-language description — the pairing an intent-to-item index needs.
+
+```sh
+tldr --update                       # populate the cache first
+tools/tldr-pairs.sh > pairs.tsv     # defaults to the common and linux platforms
+tools/tldr-pairs.sh ~/.cache/tealdeer/tldr-pages/pages.en common
+```
+
+Pages are CC-BY-4.0 from the tldr-pages project. Anything shipped from this
+output must carry that attribution. The extract is not committed here; it is
+regenerated from whatever cache the user already has.

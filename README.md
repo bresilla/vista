@@ -26,8 +26,10 @@ so no type crosses the boundary.
 
 ## vista-recall
 
-Learns from chronological history and returns concrete items observed before.
-No LLM, no neural network, no embeddings, no async runtime, no dependencies.
+Learns from chronological history. `predict` returns concrete items observed
+before; `predict_aligned` recombines them, so a repair may be a string that was
+never observed even though every part of it was. No LLM, no neural network, no
+embeddings, no async runtime, no dependencies.
 
 **Predicts what comes next.** A variable-order PPM model learns sequences,
 blended with a recent-history cache, adjusted by caller context, outcomes, and

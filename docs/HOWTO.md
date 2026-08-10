@@ -6,9 +6,16 @@ is the reference.
 ## Mental model
 
 Vista watches an ordered stream of things you did, and answers questions about
-what comes next. It only ever returns items it has actually observed. It does
-not generate text, has no model of language, no neural weights, no parser for
+what comes next. It has no model of language, no neural weights, no parser for
 whatever syntax your items happen to use, and no authored rules.
+
+`predict` returns only items it has actually observed. `predict_aligned` is the
+exception worth knowing: it *composes*, so it can return a string that was never
+observed. Repairing `apt install ripgrep` against an observed
+`sudo apt install fd` yields `sudo apt install ripgrep`, which appears nowhere
+in history. Every token in it does, and the structure holding them does, but the
+result is new. Nothing is generated from a model of language; it is recombined
+from what you supplied.
 
 Two levels of identity underpin everything:
 
