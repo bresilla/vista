@@ -9,13 +9,11 @@ Vista watches an ordered stream of things you did, and answers questions about
 what comes next. It has no model of language, no neural weights, no parser for
 whatever syntax your items happen to use, and no authored rules.
 
-`predict` returns only items it has actually observed. `predict_aligned` is the
-exception worth knowing: it *composes*, so it can return a string that was never
-observed. Repairing `apt install ripgrep` against an observed
+`predict` returns only observed items. `predict_aligned` *composes*, so it can
+return a string that was never observed: repairing `apt install ripgrep` against
 `sudo apt install fd` yields `sudo apt install ripgrep`, which appears nowhere
-in history. Every token in it does, and the structure holding them does, but the
-result is new. Nothing is generated from a model of language; it is recombined
-from what you supplied.
+in history even though every token and the structure holding them do. Nothing is
+generated from a model of language; it is recombined from what you supplied.
 
 Two levels of identity underpin everything:
 
@@ -304,6 +302,29 @@ result:      sudo apt install ripgrep
 - **Only in the candidate** — that is the repair (`sudo`).
 - **Differing** — decided by the channel, below.
 
+### Structural retrieval
+
+Alignment can only use the candidates it is given, so repair retrieves
+differently from prediction. Alongside literal and fragment matches it asks for
+items *arranged* like the broken one: same token count, same positional classes,
+and a near spelling wherever the broken item holds an unrecognised token.
+
+```
+hexe mux float --hlp        wwwf, unrecognised token at position 3
+crane index filter --help   wwwf, one edit away at position 3
+```
+
+Those share no vocabulary. The candidate supplies a spelling, the caller's own
+words survive, and the repair belongs to neither item.
+
+Neither half suffices. Near spellings alone evict the arrangements alignment
+depends on; shape alone matches tens of thousands of items. Together they select
+roughly eighteen candidates.
+
+`ShapeIndex` holds the grouping. It derives from retained surfaces, so snapshots
+rebuild it rather than storing it, and only `predict_aligned` consults it —
+prediction accuracy and latency are unchanged.
+
 ### The channel
 
 Differing tokens are a noisy-channel decision: the probability that the token
@@ -314,8 +335,7 @@ observed one.
 - Otherwise Vista prefers the **observed rate** at which that retyping actually
   happened, taken from the mined correction log.
 - Only where no such retyping was ever observed does it fall back to character
-  resemblance, scaled so half-shared characters sit exactly at the
-  unknown-token floor.
+  resemblance, scaled so half-shared characters sit at the unknown-token floor.
 
 `Config::channel_weight` scales the channel term.
 
@@ -323,11 +343,9 @@ observed one.
 
 Repair loops to a fixpoint, bounded by `max_repair_iterations` and terminated by
 any revisited value. **Adjacent tokens never both change in one pass**, which
-forces a second pass rather than a cascade of rewrites.
-
-On the synthetic fixture in `tests/predictor_cases/correction.rs`, iterating is
-worth 22.5 points of recall and 31 points of precision over a single pass, and
-results converge by the second pass.
+forces a second pass rather than a cascade of rewrites. On the fixture in
+`tests/predictor_cases/correction.rs` that is worth 22.5 points of recall and 31
+of precision over a single pass, converging by the second.
 
 ### Abstention
 
@@ -340,15 +358,8 @@ own filter.
 
 Retypings are collected from the observations themselves. A failed item directly
 followed in the same stream by a similar successful one is recorded as a
-`CorrectionPair`. Similarity is gated at one point change per five characters.
-
-```rust
-# use vista_recall::{Config, Predictor};
-# let predictor = Predictor::new(Config::default());
-for (pair, count) in predictor.corrections() {
-    println!("{} -> {} ({count}x)", pair.typed.value, pair.corrected.value);
-}
-```
+`CorrectionPair`, gated at one point change per five characters, and read back
+through `Predictor::corrections()`.
 
 Nothing is annotated and no dictionary is consulted. Your own retyping is the
 only supervision, which requires that you supply outcome features.
@@ -584,8 +595,6 @@ ceiling.
 
 Repository rules: Makefile targets for all build and test work, no maintained
 file over 600 physical lines, comments describing only what code does, one
-current pre-1.0 path with no legacy forwarding, and no new dependency, unsafe
-code, async runtime, or predictor-owned storage without explicit approval.
-
-README code blocks are **not** compiled as doctests. Check them by hand or wire
-them into a compiled example before trusting them.
+current pre-1.0 path, and no new dependency, unsafe code, async runtime, or
+predictor-owned storage without approval. Markdown code blocks are **not**
+compiled as doctests — check them by hand or wire them into an example.
