@@ -85,3 +85,53 @@ tools/tldr-pairs.sh ~/.cache/tealdeer/tldr-pages/pages.en common
 Pages are CC-BY-4.0 from the tldr-pages project. Anything shipped from this
 output must carry that attribution. The extract is not committed here; it is
 regenerated from whatever cache the user already has.
+
+## Measured: reference repair
+
+Skeletons make a usable repair corpus. Held-out test on a real 308,000-command
+history: train on the first two thirds, then damage one character in 3,000
+commands the personal model had **never seen**.
+
+| Repairing from | Recovered |
+|---|---:|
+| personal history alone | 0.010 |
+| **tldr skeletons alone** | **0.106** |
+| either | 0.114 |
+
+Only 0.03% of those targets appear in tldr at all, so the gain is not retrieval.
+Repair composes: the reference supplies a correct spelling and the caller's own
+arguments survive, producing commands present in neither corpus.
+
+```
+typed:  hexe mux float --hlp
+  ->    hexe mux float --help
+  via:  crane index filter --help
+```
+
+`hexe` is not documented anywhere; an unrelated page supplied `--help`.
+
+Keep the corpora in separate `Predictor` instances. A reference predictor must
+never answer `predict`, or 29,000 commands the caller has never run become
+suggestions. See `crates/recall/examples/reference.rs`.
+
+## Measured: structural retrieval
+
+Repair works by structural analogy, not word lookup. `crane index filter --help`
+fixes `hexe mux float --hlp` because the two are arranged alike, sharing no
+vocabulary at all.
+
+Retrieval was the whole bottleneck: of the repairs that failed, 87.5% failed
+because the correct word never reached a candidate, while alignment and ranking
+together failed 0.3%. Two obvious fixes both lost to the baseline — near
+spellings alone evict the structurally similar candidates composition needs,
+and shape alone returns 22,000 candidates. Their intersection is narrow, 18
+candidates on average, and reaches 44% of the corrections.
+
+| Repairing from | before | after |
+|---|---:|---:|
+| all failures | 0.137 | **0.206** |
+| item run before | 0.184 | **0.398** |
+| item never run before | 0.118 | **0.131** |
+
+Prediction is unaffected: structural retrieval runs only on the repair path,
+and top-1 and latency are unchanged.

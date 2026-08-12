@@ -48,6 +48,15 @@ No rules, no templates, no dictionary. Shared tokens are structure, tokens only
 history has are the repair, and differing tokens are decided by what you have
 actually typed before.
 
+Repair also retrieves by *arrangement*, so an item that shares no words at all
+can still supply a spelling:
+
+```text
+you typed:  hexe mux float --hlp
+history:    crane index filter --help
+result:     hexe mux float --help
+```
+
 ```rust
 use vista_recall::{Config, Item, Observation, Position, Predictor, Query, StreamId};
 
@@ -142,6 +151,18 @@ predicted before being learned:
 Ranking sits near the ceiling for this class of model: every configuration knob
 moves top-1 by less than 0.01, and surprise-based re-ranking makes it strictly
 worse. The remaining headroom is the 26.8% that retrieval never surfaces.
+
+Repair, measured the same way — one character deleted from a held-out command,
+scored only on exact recovery:
+
+| Repairing from | literal only | with structural retrieval |
+|---|---:|---:|
+| all failures | 0.137 | **0.206** |
+| item run before | 0.184 | **0.398** |
+| item never run before | 0.118 | **0.131** |
+
+Retrieval was the whole bottleneck: alignment and ranking together account for
+0.3% of failures.
 
 These are measurements from one machine and one corpus, not portable claims.
 

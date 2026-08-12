@@ -124,6 +124,8 @@ impl Predictor {
             .unwrap_or_default();
         let ppm_history = self.ppm.resolve(&history);
         #[cfg(feature = "surface-indexes")]
+        let recognised = |token: &str| self.tokens.known(token);
+        #[cfg(feature = "surface-indexes")]
         let context_candidates = self
             .context
             .candidates(&query.context, self.config.max_candidates);
@@ -146,6 +148,11 @@ impl Predictor {
             tokens: &self.tokens,
             #[cfg(feature = "surface-indexes")]
             query_tokens: &query_tokens,
+            #[cfg(feature = "surface-indexes")]
+            shapes: &self.shapes,
+            // repair is the only path that must reach a damaged word
+            #[cfg(feature = "surface-indexes")]
+            structural: matches!(mode, PartialMode::Retrieval).then_some(&recognised),
             #[cfg(feature = "recent-cache")]
             history: &history,
             ppm_history: &ppm_history,

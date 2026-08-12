@@ -62,6 +62,7 @@ impl Predictor {
             self.context.remove_surface(surface);
             self.tokens.remove_surface(surface);
             self.partials.remove_surface(surface);
+            self.shapes.remove_surface(surface);
         }
         #[cfg(not(feature = "surface-indexes"))]
         let _ = surface;
@@ -86,6 +87,10 @@ impl Predictor {
             self.context.clear();
             self.tokens.clear();
             self.partials.clear();
+        }
+        #[cfg(feature = "surface-indexes")]
+        {
+            self.shapes.clear();
         }
         self.clock = 0;
     }

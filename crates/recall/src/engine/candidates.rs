@@ -8,6 +8,12 @@ use crate::api::{Query, SurfaceId, TemplateId};
 #[cfg(feature = "recent-cache")]
 use crate::model::RecentCache;
 use crate::model::{Dictionary, Ppm, PpmHistory};
+#[cfg(feature = "surface-indexes")]
+use crate::model::{ShapeIndex, distance_within, shape};
+
+/// Structural matches sit beside literal ones rather than displacing them.
+#[cfg(feature = "surface-indexes")]
+const SHAPE_WEIGHT: u64 = 1_500;
 
 pub(crate) struct Candidates<'a> {
     pub(crate) ppm: &'a Ppm,
@@ -22,6 +28,12 @@ pub(crate) struct Candidates<'a> {
     pub(crate) tokens: &'a TokenIndex,
     #[cfg(feature = "surface-indexes")]
     pub(crate) query_tokens: &'a [String],
+    #[cfg(feature = "surface-indexes")]
+    pub(crate) shapes: &'a ShapeIndex,
+    /// Offer items arranged like the query that differ by a near spelling.
+    /// Repair needs this; a damaged word retrieves nothing by exact lookup.
+    #[cfg(feature = "surface-indexes")]
+    pub(crate) structural: Option<&'a dyn Fn(&str) -> bool>,
     #[cfg(feature = "recent-cache")]
     pub(crate) history: &'a [TemplateId],
     pub(crate) ppm_history: &'a PpmHistory,
@@ -93,6 +105,13 @@ impl Candidates<'_> {
             }
         }
         #[cfg(feature = "surface-indexes")]
+        if let (Some(partial), Some(known)) = (&query.partial, self.structural) {
+            for (id, evidence) in self.structural_candidates(partial, known) {
+                let entry = weighted.entry(id).or_default();
+                *entry = entry.saturating_add(evidence.saturating_mul(SHAPE_WEIGHT));
+            }
+        }
+        #[cfg(feature = "surface-indexes")]
         for (id, evidence) in self.context_candidates {
             let entry = weighted.entry(*id).or_default();
             *entry = entry.saturating_add(evidence.saturating_mul(500));
@@ -122,5 +141,58 @@ impl Candidates<'_> {
             .take(self.candidate_limit)
             .map(|(id, _)| id)
             .collect()
+    }
+
+    /// Items arranged like `partial` whose token at some unrecognised position
+    /// is a near spelling of the one there. Shape alone is far too broad and a
+    /// near spelling alone loses the arrangement; the pair is narrow.
+    #[cfg(feature = "surface-indexes")]
+    fn structural_candidates(
+        &self,
+        partial: &str,
+        known: &dyn Fn(&str) -> bool,
+    ) -> BTreeMap<SurfaceId, u64> {
+        let mut found = BTreeMap::new();
+        let Some(wanted) = shape(partial) else {
+            return found;
+        };
+        let query: Vec<&str> = partial.split_whitespace().collect();
+        let damaged: Vec<(usize, Vec<char>, usize)> = query
+            .iter()
+            .enumerate()
+            .filter(|(_, token)| token.chars().count() >= 4 && !known(token))
+            .map(|(at, token)| {
+                let chars: Vec<char> = token.to_lowercase().chars().collect();
+                let budget = 1 + chars.len() / 8;
+                (at, chars, budget)
+            })
+            .collect();
+        if damaged.is_empty() {
+            return found;
+        }
+        for id in self.shapes.matching(&wanted) {
+            let Some(surface) = self.dictionary.surface(id) else {
+                continue;
+            };
+            let candidate: Vec<&str> = surface.item.value.split_whitespace().collect();
+            if candidate.len() != query.len() {
+                continue;
+            }
+            for (at, chars, budget) in &damaged {
+                if candidate[*at] == query[*at] {
+                    continue;
+                }
+                let other: Vec<char> = candidate[*at].to_lowercase().chars().collect();
+                if let Some(distance) = distance_within(chars, &other, *budget) {
+                    let weight = (budget + 1 - distance) as u64;
+                    let entry = found.entry(id).or_default();
+                    *entry = u64::max(*entry, weight);
+                }
+            }
+            if found.len() > self.candidate_limit {
+                break;
+            }
+        }
+        found
     }
 }

@@ -19,6 +19,8 @@ use crate::engine::{Candidates, Channel, Prediction, RankInput, rank, repair};
 #[cfg(any(feature = "recent-cache", feature = "snapshot"))]
 use crate::model::RecentCache;
 #[cfg(feature = "surface-indexes")]
+use crate::model::ShapeIndex;
+#[cfg(feature = "surface-indexes")]
 use crate::model::context_ratio;
 use crate::model::{CorrectionLog, CorrectionPair, Dictionary, Ppm, surface_ratio};
 
@@ -60,6 +62,8 @@ pub struct Predictor {
     pub(crate) tokens: TokenIndex,
     #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
     pub(crate) partials: PartialIndex,
+    #[cfg(feature = "surface-indexes")]
+    pub(crate) shapes: ShapeIndex,
     pub(crate) corrections: CorrectionLog,
     pub(crate) clock: u64,
 }
@@ -109,6 +113,8 @@ impl Predictor {
                 config.max_partial_chars_per_item,
             ),
             corrections: CorrectionLog::new(config.max_correction_pairs),
+            #[cfg(feature = "surface-indexes")]
+            shapes: ShapeIndex::new(config.max_surfaces),
             normalizer: Box::new(normalizer),
             #[cfg(any(feature = "snapshot", feature = "surface-indexes"))]
             tokenizer: Box::new(tokenizer),

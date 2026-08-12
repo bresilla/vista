@@ -118,6 +118,39 @@ fn history_decides_what_counts_as_a_misspelling() {
 }
 
 #[test]
+fn an_item_arranged_like_the_broken_one_supplies_the_spelling() {
+    // none of these share a word with the query; only the arrangement matches
+    let predictor = history_predictor(&[
+        "crane index filter --help",
+        "cargo build --release",
+        "git status",
+    ]);
+    let broken = Item::new("command", "hexe mux float --hlp");
+
+    let repaired = predictor.predict_aligned(&query(1, 4, 3), &broken);
+
+    assert!(
+        values(&repaired).contains(&"hexe mux float --help"),
+        "structural retrieval should reach the spelling, got {:?}",
+        values(&repaired)
+    );
+}
+
+#[test]
+fn structure_alone_never_rewrites_a_recognised_token() {
+    let predictor = history_predictor(&["crane index filter --help", "hexe mux float --list"]);
+    let broken = Item::new("command", "hexe mux float --list");
+
+    // every token is known, so there is nothing to repair
+    let repaired = predictor.predict_aligned(&query(1, 4, 3), &broken);
+    assert!(
+        !values(&repaired).contains(&"hexe mux float --help"),
+        "a known token must survive, got {:?}",
+        values(&repaired)
+    );
+}
+
+#[test]
 fn an_empty_history_suggests_nothing() {
     let predictor = Predictor::new(Config::default());
     let failed = Item::new("command", "apt install ripgrep");
